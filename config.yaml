@@ -1,0 +1,62 @@
+# 환율 설정
+fx_rules:
+  baseline: 1420
+  zones:
+    full_convert: 1380      # 80만원 전액 환전
+    normal_start: 1380      # 정상구간 시작
+    normal_end: 1450        # 정상구간 끝
+    half_pause: 1450        # 환전 보류
+    full_pause: 1500        # 전액 보류
+    bulk_convert: 1350      # 쌓인 원화 50% 한방 환전
+
+# 추적 종목
+watchlist:
+  # 미국 주식
+  - ticker: SPYM
+    name: "SPDR S&P 500 Fossil Fuel Reserves Free ETF"
+    type: core
+    alert_drop_pct: 10
+    
+  - ticker: GOOGL
+    name: "Alphabet A"
+    type: growth
+    alert_drop_pct: 7
+    
+  - ticker: OXY
+    name: "Occidental Petroleum"
+    type: satellite
+    max_portfolio_pct: 10
+    alert_drop_pct: 7
+    
+  - ticker: QCOM
+    name: "Qualcomm"
+    type: conditional
+    buy_condition:
+      per_max: 25
+      drop_pct_min: 15
+
+  # 한국 ETF (ISA 계좌)
+  - ticker: "360750.KS"
+    name: "TIGER 미국S&P500"
+    type: isa_core
+    monthly_trigger: true  # 전월 1일 기준 트리거 체크
+
+# 거시경제 키워드
+macro_keywords:
+  - FOMC
+  - CPI
+  - 연준
+  - 환율
+  - 금리인상
+  - 금리인하
+
+# 이메일 리포트 설정
+email_report:
+  enabled: true
+  recipient: "sawoo9410@gmail.com"
+  schedule: "0 7 * * *"  # 매일 07:00 KST
+  
+# 텔레그램 알림 설정
+telegram_alerts:
+  enabled: true
+  check_interval: 15  # 분 단위

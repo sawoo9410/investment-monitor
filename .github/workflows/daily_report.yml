@@ -1,0 +1,34 @@
+name: Daily Investment Report
+
+on:
+  schedule:
+    # 매일 오전 7시 KST (UTC 22:00 = KST 07:00 다음날)
+    - cron: '0 22 * * *'
+  workflow_dispatch:  # 수동 실행 가능
+
+jobs:
+  send-report:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Run report script
+      env:
+        EXCHANGERATE_API_KEY: ${{ secrets.EXCHANGERATE_API_KEY }}
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+        GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+      run: |
+        python main.py
