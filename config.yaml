@@ -12,7 +12,7 @@ fx_rules:
 # 포트폴리오 설정
 portfolio:
   # 현금 (수동 설정, 매달 업데이트)
-  cash_krw: 1000000  # 원화 + 달러(환산) 합계
+  cash_krw: 1900000  # 원화 + 달러(환산) 합계
   
   # 비중 한도
   limits:
@@ -76,10 +76,6 @@ holdings_only:
   - ticker: "133690.KS"
     name: "TIGER 미국나스닥100"
     holdings: 47
-    
-  - ticker: "0046A0.KS"
-    name: "TIGER 미국초단기(3개월이하)국채"
-    holdings: 90
 
 # 거시경제 키워드
 macro_keywords:
