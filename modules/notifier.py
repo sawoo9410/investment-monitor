@@ -50,61 +50,138 @@ def send_telegram(bot_token: str, chat_id: str, message: str) -> bool:
         print(f"텔레그램 발송 실패: {e}")
         return False
 
-def format_email_report(data: Dict) -> str:
+def format_email_report(report_data: Dict) -> str:
     """이메일 리포트 HTML 생성"""
+    timestamp = report_data['timestamp']
+    fx_rate = report_data.get('fx_rate')
+    fx_zone_info = report_data.get('fx_zone_info')
+    stock_data = report_data.get('stock_data', [])
+    isa_trigger = report_data.get('isa_trigger')
+    qcom_condition = report_data.get('qcom_condition')
+    portfolio_warnings = report_data.get('portfolio_warnings', [])
+    macro_summary = report_data.get('macro_summary', '')
+    
+    # HTML 템플릿
     html = f"""
     <html>
     <head>
         <style>
-            body {{ font-family: Arial, sans-serif; }}
-            .header {{ background-color: #2c3e50; color: white; padding: 20px; }}
-            .section {{ margin: 20px 0; padding: 15px; border-left: 4px solid #3498db; }}
-            .metric {{ margin: 10px 0; }}
-            .alert {{ background-color: #fff3cd; padding: 10px; margin: 10px 0; }}
-            .success {{ background-color: #d4edda; padding: 10px; margin: 10px 0; }}
-            table {{ border-collapse: collapse; width: 100%; }}
-            th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
-            th {{ background-color: #3498db; color: white; }}
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .header {{ background-color: #4CAF50; color: white; padding: 20px; text-align: center; }}
+            .section {{ margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }}
+            .alert {{ background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 10px; margin: 10px 0; }}
+            .success {{ background-color: #d4edda; border-left: 4px solid #28a745; padding: 10px; margin: 10px 0; }}
+            .warning {{ background-color: #f8d7da; border-left: 4px solid #dc3545; padding: 10px; margin: 10px 0; }}
+            table {{ width: 100%; border-collapse: collapse; margin: 10px 0; }}
+            th, td {{ padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }}
+            th {{ background-color: #f2f2f2; font-weight: bold; }}
+            .positive {{ color: #28a745; }}
+            .negative {{ color: #dc3545; }}
         </style>
     </head>
     <body>
         <div class="header">
-            <h1>📊 투자 모니터링 리포트</h1>
-            <p>{data['date']}</p>
+            <h1>📊 투자 모니터링 데일리 리포트</h1>
+            <p>{timestamp}</p>
         </div>
         
+        <!-- 환율 정보 -->
         <div class="section">
-            <h2>📈 오늘의 대시보드</h2>
+            <h2>💵 USD/KRW 환율</h2>
+"""
+    
+    if fx_rate and fx_zone_info:
+        html += f"""
+            <p><strong>현재 환율:</strong> {fx_rate:.2f}원</p>
+            <p><strong>구간:</strong> {fx_zone_info['zone_name']}</p>
+            <div class="alert">
+                <strong>액션:</strong> {fx_zone_info['action']}
+            </div>
+"""
+    else:
+        html += "<p>환율 조회 실패</p>"
+    
+    html += "</div>"
+    
+    # 중요 알림
+    if isa_trigger or qcom_condition:
+        html += '<div class="section"><h2>🚨 중요 알림</h2>'
+        
+        if isa_trigger:
+            html += f"""
+            <div class="warning">
+                <strong>ISA 트리거 발동!</strong><br>
+                {isa_trigger['ticker']}: 전월 대비 {isa_trigger['change_pct']:.2f}%<br>
+                트리거 레벨: {isa_trigger['trigger_level']}<br>
+                <strong>액션:</strong> {isa_trigger['action']}
+            </div>
+"""
+        
+        if qcom_condition:
+            html += f"""
+            <div class="success">
+                <strong>QCOM 매수 조건 충족!</strong><br>
+                PER: {qcom_condition['per']:.1f}<br>
+                52주 고점 대비: {qcom_condition['drop_pct']:.1f}%<br>
+                <strong>액션:</strong> {qcom_condition['action']}
+            </div>
+"""
+        
+        html += "</div>"
+    
+    # 주식 데이터
+    html += """
+        <div class="section">
+            <h2>📈 종목 현황</h2>
             <table>
                 <tr>
-                    <th>항목</th>
-                    <th>현재값</th>
-                    <th>변동</th>
+                    <th>종목</th>
+                    <th>현재가</th>
+                    <th>전일비</th>
+                    <th>등락률</th>
                 </tr>
+"""
+    
+    for stock_info in stock_data:
+        price_data = stock_info.get('price_data')
+        if price_data:
+            ticker = price_data['ticker']
+            current = price_data['current_price']
+            change_pct = price_data['change_pct']
+            color_class = 'positive' if change_pct >= 0 else 'negative'
+            
+            html += f"""
                 <tr>
-                    <td>USD/KRW 환율</td>
-                    <td>{data['fx']['current_rate']:.2f}원</td>
-                    <td>{data['fx']['zone_name']}</td>
+                    <td><strong>{ticker}</strong></td>
+                    <td>${current:.2f}</td>
+                    <td class="{color_class}">{change_pct:+.2f}%</td>
+                    <td class="{color_class}">{'▲' if change_pct >= 0 else '▼'}</td>
                 </tr>
-                {data['stocks_table']}
-            </table>
-        </div>
-        
+"""
+    
+    html += "</table></div>"
+    
+    # 포트폴리오 경고
+    if portfolio_warnings:
+        html += '<div class="section"><h2>⚠️ 포트폴리오 한도 경고</h2><ul>'
+        for warning in portfolio_warnings:
+            html += f"<li>{warning}</li>"
+        html += "</ul></div>"
+    
+    # AI 거시경제 요약
+    if macro_summary:
+        html += f"""
         <div class="section">
-            <h2>⚡ 액션 트리거</h2>
-            {data['triggers']}
+            <h2>🤖 AI 거시경제 요약</h2>
+            <div style="white-space: pre-wrap; line-height: 1.8;">{macro_summary}</div>
         </div>
-        
-        <div class="section">
-            <h2>🌍 거시경제 이슈</h2>
-            <p>{data['macro_summary']}</p>
-        </div>
-        
-        {data['portfolio_check']}
-        
+"""
+    
+    html += """
     </body>
     </html>
     """
+    
     return html
 
 def format_telegram_alert(alert_type: str, data: Dict) -> str:
