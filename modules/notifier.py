@@ -206,3 +206,74 @@ def format_email_report(report_data: Dict) -> str:
                 elif monthly_change <= -5:
                     monthly_display += "<br><strong style='color:#ffc107;'>⚠️ -5% 트리거</strong>"
             else:
+                monthly_display = "-"
+            
+            # 펀더멘탈 표시
+            if fundamentals:
+                per = fundamentals.get('per')
+                roe = fundamentals.get('roe')
+                debt_equity = fundamentals.get('debt_equity')
+                profit_margin = fundamentals.get('profit_margin')
+                
+                # PER
+                per_display = f"{per:.1f}" if per else "-"
+                
+                # ROE (15% 기준)
+                if roe and roe != 'None':
+                    roe_val = float(roe) * 100
+                    roe_color = 'positive' if roe_val >= 15 else 'negative'
+                    roe_display = f"<span class='{roe_color}'>{roe_val:.1f}%</span>"
+                else:
+                    roe_display = "-"
+                
+                # Debt/Equity (1.0 기준)
+                if debt_equity and debt_equity != 'None':
+                    de_val = float(debt_equity)
+                    de_color = 'positive' if de_val <= 1.0 else 'negative'
+                    de_display = f"<span class='{de_color}'>{de_val:.2f}</span>"
+                else:
+                    de_display = "-"
+                
+                # Profit Margin (퍼센트 표시)
+                if profit_margin and profit_margin != 'None':
+                    pm_val = float(profit_margin) * 100
+                    margin_display = f"{pm_val:.1f}%"
+                else:
+                    margin_display = "-"
+            else:
+                per_display = "-"
+                roe_display = "-"
+                de_display = "-"
+                margin_display = "-"
+            
+            html += f"""
+                <tr>
+                    <td><strong>{ticker}</strong></td>
+                    <td>{price_display}</td>
+                    <td class="{color_class}">{change_pct:+.2f}%</td>
+                    <td>{monthly_display}</td>
+                    <td>{per_display}</td>
+                    <td>{roe_display}</td>
+                    <td>{de_display}</td>
+                    <td>{margin_display}</td>
+                    <td class="{color_class}">{'▲' if change_pct >= 0 else '▼'}</td>
+                </tr>
+"""
+    
+    html += "</table></div>"
+    
+    # AI 거시경제 요약
+    if macro_summary:
+        html += f"""
+        <div class="section">
+            <h2>🤖 AI 거시경제 요약</h2>
+            <div style="white-space: pre-wrap; line-height: 1.8;">{macro_summary}</div>
+        </div>
+"""
+    
+    html += """
+    </body>
+    </html>
+    """
+    
+    return html
