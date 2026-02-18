@@ -18,7 +18,13 @@ def generate_macro_summary(api_key: str, keywords: List[str]) -> Optional[str]:
         
         message = client.messages.create(
             model="claude-opus-4-5-20251101",
-            max_tokens=1500,
+            max_tokens=2500,
+            tools=[
+                {
+                    "type": "web_search_20250305",
+                    "name": "web_search"
+                }
+            ],
             messages=[
                 {
                     "role": "user",
@@ -28,50 +34,90 @@ def generate_macro_summary(api_key: str, keywords: List[str]) -> Optional[str]:
 
 이 투자자의 전략:
 - S&P 500 ETF 코어 70-100% (장기 보유)
-- 개별주 20-30% (AI 엔지니어, GOOGL/OXY/QCOM 소량 보유)
+- 개별주 보유: GOOGL 2주, OXY 1주, QCOM 2주
 - 급락 시에만 규칙 기반 추가 매수 (-5%, -10% 트리거)
 - 단기 뉴스에 흔들리지 않고 장기 관점 유지
 
-최근 주요 거시경제 이슈를 다음 구조로 요약해주세요:
+최근 주요 이슈를 다음 구조로 요약해주세요:
 
 키워드: {keyword_str}
 
 [작성 구조]
 
-1. 거시경제 현황 (2-3문장)
+1. 미국 주요 지수 (표 형식, 반드시 웹 검색 사용)
+지수 | 종가 | 전일비 | 등락률
+S&P 500 | $x,xxx.xx | +xx.xx | +x.xx%
+Nasdaq | $xx,xxx.xx | +xx.xx | +x.xx%
+Dow Jones | $xx,xxx.xx | +xx.xx | +x.xx%
+Russell 2000 | $x,xxx.xx | +xx.xx | +x.xx%
+
+2. 거시경제 현황 (2-3문장)
    • 주요 경제지표 (CPI, 금리, GDP 등)
    • 시장 분위기 요약
 
-2. S&P 500 장기 관점 (3-4문장 서술형)
+3. 투자자 심리 지표 (반드시 웹 검색으로 최신 수치 확인)
+   • VIX 지수: xx.xx (평가: 낮음/보통/높음)
+   • CNN Fear & Greed Index: xx (평가: 극단적 공포/공포/중립/탐욕/극단적 탐욕)
+   • 해석: (1-2문장, 버핏 관점)
+
+4. S&P 500 장기 관점 (3-4문장 서술형)
    - 향후 3-5년 구조적 영향
    - 버핏이라면 어떻게 볼지
 
-3. 급락 매수 판단
+5. 급락 매수 판단
    • 현재 시장 상태: (고평가/적정/저평가)
    • 추천 액션: (현금 유지 / 매수 대기 / 추가 매수)
    • 근거: (1-2문장)
    • **중요**: S&P 500 PER 평가 시 "역사적 평균"이 아닌 "최근 5년 평균"과 비교하세요. 현재 PER이 최근 5년 평균보다 높으면 고평가, 낮으면 저평가로 판단.
 
-4. AI/테크 모트 점검 (개조식)
+6. 보유 종목별 최신 이슈 (반드시 웹 검색으로 최근 1주일 뉴스 확인)
+   GOOGL (Alphabet A)
+   • 최근 1주일 주요 뉴스 (2-3문장)
+   • 출처 명시
+   
+   OXY (Occidental Petroleum)
+   • 최근 1주일 주요 뉴스 (2-3문장)
+   • 버크셔 지분 현황 포함
+   • 출처 명시
+   
+   QCOM (Qualcomm)
+   • 최근 1주일 주요 뉴스 (2-3문장)
+   • 출처 명시
+
+7. 다가오는 주요 이벤트 (웹 검색으로 향후 2주 이내 이벤트 확인)
+   • 날짜 | 이벤트 | 중요도
+   • 예: 2월 25일 | FOMC 의사록 공개 | 높음
+   • 예: 3월 5일 | 고용 보고서 발표 | 높음
+   • 예: 3월 12일 | CPI 발표 | 높음
+   • 보유 종목 실적 발표/투자자의 날 포함
+
+8. AI/테크 모트 점검 (개조식)
    • GOOGL: 모트 상태
    • QCOM: 모트 상태
    • OXY: 모트 상태
    • 섹터 리스크: 주요 이슈
 
 [작성 규칙]
+- 표 형식은 정확히 | 구분자 사용
 - 개조식(•)과 서술형 적절히 혼합
-- 마크다운 금지 (#, **, -, |)
+- 마크다운 금지 (#, **, -, |는 표에서만 사용)
 - 명확하고 실용적인 톤
 - PER 판단은 반드시 "최근 5년 평균" 기준
 - 한글로 작성
 - **중요**: 오늘 날짜는 {current_date}입니다. 응답에 날짜를 명시할 때 이 날짜를 기준으로 하세요.
+- **필수**: 종목별 뉴스, 주요 지수, 투자자 심리 지표는 반드시 웹 검색을 사용하여 최신 정보를 가져오세요.
 """
                 }
             ]
         )
         
         if message.content and len(message.content) > 0:
-            return message.content[0].text
+            # 웹 검색 결과가 포함된 응답 처리
+            response_text = ""
+            for block in message.content:
+                if block.type == "text":
+                    response_text += block.text
+            return response_text if response_text else None
         else:
             return None
             
