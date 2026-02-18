@@ -1,68 +1,77 @@
-"""Claude API를 사용한 거시경제 요약 모듈"""
+"""AI 요약 및 포트폴리오 분석 모듈"""
 from anthropic import Anthropic
-from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 def generate_macro_summary(api_key: str, keywords: List[str]) -> Optional[str]:
-    """거시경제 주요 이슈 요약 생성"""
+    """거시경제 주요 이슈 요약 생성 (Claude Opus 4.5)"""
     try:
         client = Anthropic(api_key=api_key)
         
-        today = datetime.now().strftime('%Y년 %m월 %d일')
-        keywords_str = ", ".join(keywords)
-        
-        prompt = f"""오늘은 {today}입니다.
-
-다음 키워드와 관련된 최근 1주일간의 주요 거시경제 이슈를 간단히 요약해주세요:
-{keywords_str}
-
-요약 형식:
-- 3~5개 주요 이슈만 간결하게
-- 각 이슈는 1~2문장으로
-- 투자자 관점에서 중요한 것 위주
-- 날짜 명시
-
-예시:
-- 2월 15일 - 미국 1월 CPI 3.2%, 예상치 상회. 금리인하 기대 후퇴.
-- 2월 13일 - 연준 의장 발언: "인플레이션 둔화 확인 필요". 긴축 기조 유지 시사.
-"""
+        keyword_str = ", ".join(keywords)
         
         message = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1000,
-            messages=[{"role": "user", "content": prompt}]
+            model="claude-opus-4-5-20251101",  # Opus 4.5
+            max_tokens=1000,  # 출력 토큰 제한
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"""당신은 투자자를 위한 거시경제 분석가입니다. 
+다음 키워드와 관련된 최근 주요 경제 이슈를 간결하게 요약해주세요:
+
+키워드: {keyword_str}
+
+요구사항:
+1. 최근 1주일 이내의 주요 경제 이벤트 중심
+2. S&P 500, 반도체, AI 섹터에 미칠 영향 분석
+3. 개인 투자자 관점에서 유의할 점
+4. 3-5문단, 한글로 작성
+
+명확하고 실용적인 분석을 제공해주세요."""
+                }
+            ]
         )
         
-        return message.content[0].text
-        
+        # 응답 추출
+        if message.content and len(message.content) > 0:
+            summary = message.content[0].text
+            return summary
+        else:
+            return None
+            
     except Exception as e:
         print(f"AI 요약 생성 실패: {e}")
-        return "거시경제 요약을 생성할 수 없습니다."
+        # 크레딧 부족 또는 API 에러 시 기본 메시지
+        return "📌 AI 거시경제 요약을 생성할 수 없습니다.\n주요 경제 이슈는 직접 확인해주세요."
 
-def check_portfolio_limits(holdings: dict, config: dict) -> str:
-    """포트폴리오 비중 한계선 체크"""
+def check_portfolio_limits(portfolio: Dict, config: Dict) -> List[str]:
+    """포트폴리오 한도 체크"""
     warnings = []
     
-    # AI/테크 섹터 합계 체크 (GOOGL, QCOM 등)
-    tech_tickers = ['GOOGL', 'QCOM']
-    tech_total = sum(holdings.get(t, 0) for t in tech_tickers)
+    total_value = portfolio.get('total_value', 0)
+    if total_value == 0:
+        return ["포트폴리오 데이터 없음"]
     
-    if tech_total > 30:
-        warnings.append(f"⚠️ AI/테크 섹터 {tech_total:.1f}% (한계: 30%)")
+    # AI/테크 섹터 한도 체크 (30%)
+    ai_tech_value = portfolio.get('ai_tech_value', 0)
+    ai_tech_pct = (ai_tech_value / total_value) * 100
     
-    # OXY 비중 체크
-    oxy_pct = holdings.get('OXY', 0)
+    if ai_tech_pct > 30:
+        warnings.append(f"AI/테크 섹터 {ai_tech_pct:.1f}% (한도 30% 초과)")
+    
+    # OXY 비중 체크 (10%)
+    oxy_value = portfolio.get('oxy_value', 0)
+    oxy_pct = (oxy_value / total_value) * 100
+    
     if oxy_pct > 10:
-        warnings.append(f"⚠️ OXY {oxy_pct:.1f}% (한계: 10%)")
+        warnings.append(f"OXY {oxy_pct:.1f}% (한도 10% 초과)")
     
-    # 현금 비율 체크
-    cash_pct = holdings.get('CASH', 0)
+    # 현금 비중 체크 (15-25%)
+    cash_total = portfolio.get('cash_krw', 0) + portfolio.get('cash_usd', 0)
+    cash_pct = (cash_total / total_value) * 100
+    
     if cash_pct < 15:
-        warnings.append(f"⚠️ 현금 {cash_pct:.1f}% (최소: 15%)")
+        warnings.append(f"현금 {cash_pct:.1f}% (최소 15% 미만)")
     elif cash_pct > 25:
-        warnings.append(f"⚠️ 현금 {cash_pct:.1f}% (최대: 25%)")
+        warnings.append(f"현금 {cash_pct:.1f}% (최대 25% 초과)")
     
-    if warnings:
-        return "\n".join(warnings)
-    else:
-        return "✅ 모든 비중 한계선 내"
+    return warnings
