@@ -1,6 +1,9 @@
-"""AI 요약 및 포트폴리오 분석 모듈"""
+"""AI 기반 거시경제 요약 생성 모듈"""
 from anthropic import Anthropic
-from typing import List, Optional, Dict
+from typing import List, Optional
+from datetime import datetime
+import pytz
+
 
 def generate_macro_summary(api_key: str, keywords: List[str]) -> Optional[str]:
     """거시경제 주요 이슈 요약 생성 (Claude Opus 4.5)"""
@@ -9,6 +12,11 @@ def generate_macro_summary(api_key: str, keywords: List[str]) -> Optional[str]:
         
         keyword_str = ", ".join(keywords)
         
+        # 현재 날짜 (한국 시간)
+        kst = pytz.timezone('Asia/Seoul')
+        today = datetime.now(kst)
+        current_date = today.strftime('%Y년 %m월 %d일')
+        
         message = client.messages.create(
             model="claude-opus-4-5-20251101",
             max_tokens=1500,
@@ -16,6 +24,8 @@ def generate_macro_summary(api_key: str, keywords: List[str]) -> Optional[str]:
                 {
                     "role": "user",
                     "content": f"""당신은 워런 버핏의 투자 철학을 따르는 개인 투자자를 위한 거시경제 분석가입니다.
+
+오늘 날짜: {current_date}
 
 이 투자자의 전략:
 - S&P 500 ETF 코어 70-100% (장기 보유)
@@ -55,6 +65,7 @@ def generate_macro_summary(api_key: str, keywords: List[str]) -> Optional[str]:
 - 명확하고 실용적인 톤
 - PER 판단은 반드시 "최근 5년 평균" 기준
 - 한글로 작성
+- **중요**: 오늘 날짜는 {current_date}입니다. 응답에 날짜를 명시할 때 이 날짜를 기준으로 하세요.
 """
                 }
             ]
