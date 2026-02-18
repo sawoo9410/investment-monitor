@@ -404,11 +404,14 @@ def main():
     print("\n=== 리포트 생성 완료 ===")
     
     # API 사용량 요약
-    from modules.market_data import AV_API_CALLS, AV_DAILY_LIMIT
-    if AV_API_CALLS > 0:
-        usage_pct = (AV_API_CALLS / AV_DAILY_LIMIT) * 100
-        print(f"\n📊 오늘 Alpha Vantage API 사용량: {AV_API_CALLS}/{AV_DAILY_LIMIT} ({usage_pct:.1f}%)")
-        print(f"   남은 호출 수: {AV_DAILY_LIMIT - AV_API_CALLS}회")
+    try:
+        from modules.market_data import AV_API_CALLS, AV_DAILY_LIMIT
+        if AV_API_CALLS > 0:
+            usage_pct = (AV_API_CALLS / AV_DAILY_LIMIT) * 100
+            print(f"\n📊 오늘 Alpha Vantage API 사용량: {AV_API_CALLS}/{AV_DAILY_LIMIT} ({usage_pct:.1f}%)")
+            print(f"   남은 호출 수: {AV_DAILY_LIMIT - AV_API_CALLS}회")
+    except ImportError:
+        print("\n⚠️  API 카운터를 불러올 수 없습니다.")
 
 if __name__ == "__main__":
     main()

@@ -2,44 +2,84 @@
 fx_rules:
   baseline: 1420
   zones:
-    full_convert: 1380      # 80만원 전액 환전
-    normal_start: 1380      # 정상구간 시작
-    normal_end: 1450        # 정상구간 끝
-    half_pause: 1450        # 환전 보류
-    full_pause: 1500        # 전액 보류
-    bulk_convert: 1350      # 쌓인 원화 50% 한방 환전
+    full_convert: 1380
+    normal_start: 1380
+    normal_end: 1450
+    half_pause: 1450
+    full_pause: 1500
+    bulk_convert: 1350
 
-# 추적 종목
+# 포트폴리오 설정
+portfolio:
+  # 현금 (수동 설정, 매달 업데이트)
+  cash_krw: 1000000  # 원화 + 달러(환산) 합계
+  
+  # 비중 한도
+  limits:
+    ai_tech_sector_max: 0.20  # 20%
+    oxy_max: 0.10             # 10%
+    cash_min: 0.15            # 15%
+    cash_max: 0.25            # 25%
+  
+  # 섹터 분류
+  sectors:
+    ai_tech:
+      - GOOGL
+      - QCOM
+
+# 추적 종목 (daily tracking + 이메일 표시)
 watchlist:
-  # 미국 주식
   - ticker: SPYM
-    name: "SPDR S&P 500 Fossil Fuel Reserves Free ETF"
+    name: "SPDR S&P 500"
     type: core
+    holdings: 0
     alert_drop_pct: 10
     
   - ticker: GOOGL
     name: "Alphabet A"
     type: growth
+    sector: ai_tech
+    holdings: 2
     alert_drop_pct: 7
     
   - ticker: OXY
     name: "Occidental Petroleum"
     type: satellite
-    max_portfolio_pct: 10
+    holdings: 1
     alert_drop_pct: 7
     
   - ticker: QCOM
     name: "Qualcomm"
     type: conditional
+    sector: ai_tech
+    holdings: 2
     buy_condition:
       per_max: 25
       drop_pct_min: 15
 
-  # 한국 ETF (ISA 계좌)
   - ticker: "360750.KS"
     name: "TIGER 미국S&P500"
     type: isa_core
-    monthly_trigger: true  # 전월 1일 기준 트리거 체크
+    holdings: 312
+    monthly_trigger: true
+
+# 비중 계산용만 (가격만 조회, 이메일 미표시)
+holdings_only:
+  - ticker: "251350.KS"
+    name: "KODEX MSCI선진국"
+    holdings: 48
+    
+  - ticker: "441640.KS"
+    name: "KODEX 미국배당커버드콜액티브"
+    holdings: 96
+    
+  - ticker: "133690.KS"
+    name: "TIGER 미국나스닥100"
+    holdings: 47
+    
+  - ticker: "0046A0.KS"
+    name: "TIGER 미국초단기(3개월이하)국채"
+    holdings: 90
 
 # 거시경제 키워드
 macro_keywords:
@@ -54,9 +94,9 @@ macro_keywords:
 email_report:
   enabled: true
   recipient: "sawoo9410@gmail.com"
-  schedule: "0 7 * * *"  # 매일 07:00 KST
+  schedule: "0 7 * * *"
   
 # 텔레그램 알림 설정
 telegram_alerts:
   enabled: true
-  check_interval: 15  # 분 단위
+  check_interval: 15
