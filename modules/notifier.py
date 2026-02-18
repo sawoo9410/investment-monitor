@@ -138,23 +138,47 @@ def format_email_report(report_data: Dict) -> str:
                     <th>종목</th>
                     <th>현재가</th>
                     <th>전일비</th>
+                    <th>전월 1일 대비</th>
                     <th>등락률</th>
                 </tr>
 """
     
     for stock_info in stock_data:
         price_data = stock_info.get('price_data')
+        baseline_data = stock_info.get('baseline_data')  # ISA 트리거용
+        
         if price_data:
             ticker = price_data['ticker']
             current = price_data['current_price']
             change_pct = price_data['change_pct']
             color_class = 'positive' if change_pct >= 0 else 'negative'
             
+            # 한국 종목 vs 미국 종목 단위 구분
+            if ticker.endswith('.KS') or ticker.endswith('.KRX'):
+                price_display = f"₩{current:,.0f}"  # 원화, 천 단위 구분
+            else:
+                price_display = f"${current:.2f}"
+            
+            # 전월 1일 대비 (ISA 트리거)
+            if baseline_data:
+                monthly_change = baseline_data['change_pct']
+                monthly_color = 'positive' if monthly_change >= 0 else 'negative'
+                monthly_display = f"<span class='{monthly_color}'>{monthly_change:+.2f}%</span>"
+                
+                # ISA 트리거 경고
+                if monthly_change <= -10:
+                    monthly_display += "<br><strong style='color:#dc3545;'>🚨 -10% 트리거</strong>"
+                elif monthly_change <= -5:
+                    monthly_display += "<br><strong style='color:#ffc107;'>⚠️ -5% 트리거</strong>"
+            else:
+                monthly_display = "-"
+            
             html += f"""
                 <tr>
                     <td><strong>{ticker}</strong></td>
-                    <td>${current:.2f}</td>
+                    <td>{price_display}</td>
                     <td class="{color_class}">{change_pct:+.2f}%</td>
+                    <td>{monthly_display}</td>
                     <td class="{color_class}">{'▲' if change_pct >= 0 else '▼'}</td>
                 </tr>
 """

@@ -41,6 +41,7 @@ def generate_macro_summary(api_key: str, keywords: List[str]) -> Optional[str]:
    • 현재 시장 상태: (고평가/적정/저평가)
    • 추천 액션: (현금 유지 / 매수 대기 / 추가 매수)
    • 근거: (1-2문장)
+   • **중요**: S&P 500 PER 평가 시 "역사적 평균"이 아닌 "최근 5년 평균"과 비교하세요. 현재 PER이 최근 5년 평균보다 높으면 고평가, 낮으면 저평가로 판단.
 
 4. AI/테크 모트 점검 (개조식)
    • GOOGL: 모트 상태
@@ -51,7 +52,9 @@ def generate_macro_summary(api_key: str, keywords: List[str]) -> Optional[str]:
 - 개조식(•)과 서술형 적절히 혼합
 - 마크다운 금지 (#, **, -, |)
 - 명확하고 실용적인 톤
-- 한글로 작성"""
+- PER 판단은 반드시 "최근 5년 평균" 기준
+- 한글로 작성
+"""
                 }
             ]
         )
