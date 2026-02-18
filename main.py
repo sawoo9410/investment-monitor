@@ -1,4 +1,4 @@
-"""메인 실행 스크립트 - 매일 아침 이메일 리포트 생성"""
+"""투자 모니터링 시스템 - 메인 스크립트"""
 import os
 import yaml
 from datetime import datetime
@@ -10,9 +10,9 @@ from modules.market_data import (
     get_monthly_baseline_price,
     get_stock_fundamentals
 )
-from modules.fx_checker import check_fx_zone
+from modules.fx_checker import check_fx_zone, detect_fx_zone_change
 from modules.ai_summary import generate_macro_summary, check_portfolio_limits
-from modules.notifier import send_email, format_email_report
+from modules.notifier import send_email, send_telegram, format_email_report
 
 def load_config():
     """config.yaml 로드"""
@@ -21,129 +21,188 @@ def load_config():
 
 def main():
     """메인 실행 함수"""
-    print("=" * 50)
-    print("투자 모니터링 리포트 생성 시작")
-    print("=" * 50)
+    print(f"=== 투자 모니터링 리포트 생성 시작 ({datetime.now()}) ===")
     
     # 설정 로드
     config = load_config()
     
-    # 환경변수에서 API 키 가져오기
-    exchangerate_key = os.environ.get('EXCHANGERATE_API_KEY')
-    anthropic_key = os.environ.get('ANTHROPIC_API_KEY')
-    gmail_address = os.environ.get('GMAIL_ADDRESS')
-    gmail_password = os.environ.get('GMAIL_APP_PASSWORD')
+    # 환경변수에서 API 키 로드
+    exchangerate_api_key = os.getenv('EXCHANGERATE_API_KEY')
+    alphavantage_api_key = os.getenv('ALPHAVANTAGE_API_KEY')
+    anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
+    telegram_bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+    telegram_chat_id = os.getenv('TELEGRAM_CHAT_ID')
+    gmail_address = os.getenv('GMAIL_ADDRESS')
+    gmail_app_password = os.getenv('GMAIL_APP_PASSWORD')
     
-    # 현재 시각
-    kst = pytz.timezone('Asia/Seoul')
-    now = datetime.now(kst)
-    date_str = now.strftime('%Y년 %m월 %d일 %A')
+    # API 키 체크
+    if not all([exchangerate_api_key, alphavantage_api_key, gmail_address, gmail_app_password]):
+        print("❌ 필수 환경변수가 설정되지 않았습니다.")
+        return
     
-    print(f"\n📅 {date_str}\n")
+    # 1. 환율 조회
+    print("\n[1/5] 환율 조회 중...")
+    fx_rate = get_fx_rate(exchangerate_api_key)
+    if fx_rate:
+        print(f"✅ USD/KRW: {fx_rate:.2f}원")
+        fx_zone_info = check_fx_zone(fx_rate, config['fx_rules'])
+        print(f"   현재 구간: {fx_zone_info['zone_name']} - {fx_zone_info['action']}")
+    else:
+        print("❌ 환율 조회 실패")
+        fx_zone_info = None
     
-    # 1. 환율 데이터
-    print("환율 조회 중...")
-    fx_rate = get_fx_rate(exchangerate_key)
-    fx_info = check_fx_zone(fx_rate, config) if fx_rate else None
+    # 2. 주식/ETF 데이터 수집
+    print("\n[2/5] 주식 데이터 수집 중...")
+    stock_data = []
+    isa_trigger_data = None
+    qcom_condition_data = None
     
-    # 2. 주식 데이터
-    print("주식 데이터 조회 중...")
-    stocks_data = {}
-    stocks_table = ""
-    
-    for item in config['watchlist']:
-        ticker = item['ticker']
-        print(f"  - {ticker}")
-        data = get_stock_price(ticker)
-        if data:
-            stocks_data[ticker] = data
-            stocks_table += f"""
-                <tr>
-                    <td>{item['name']}</td>
-                    <td>${data['current_price']}</td>
-                    <td style="color: {'red' if data['change_pct'] < 0 else 'green'}">
-                        {data['change_pct']:+.2f}%
-                    </td>
-                </tr>
-            """
-    
-    # 3. ISA 트리거 체크
-    print("\nISA 트리거 체크 중...")
-    isa_trigger = get_monthly_baseline_price("360750.KS")
-    
-    # 4. QCOM 매수 조건 체크
-    print("QCOM 조건 체크 중...")
-    qcom_data = get_stock_fundamentals("QCOM")
-    
-    # 5. 트리거 요약 생성
-    triggers_html = ""
-    
-    if fx_info:
-        triggers_html += f'<div class="metric">✅ 환율 구간: {fx_info["zone_name"]}</div>'
-    
-    if isa_trigger:
-        change = isa_trigger['change_pct']
-        if change <= -10:
-            triggers_html += f'<div class="alert">📉 ISA 매수 트리거: 전월比 {change:.1f}% → 예비현금 60% 추가매수</div>'
-        elif change <= -5:
-            triggers_html += f'<div class="alert">📉 ISA 매수 트리거: 전월比 {change:.1f}% → 예비현금 30% 추가매수</div>'
-        else:
-            triggers_html += f'<div class="metric">✅ ISA 매수 트리거: 전월比 {change:.1f}% (해당없음)</div>'
-    
-    if qcom_data:
-        per = qcom_data.get('per', 0)
-        drop = qcom_data.get('drop_from_high_pct', 0)
+    for stock_config in config['watchlist']:
+        ticker = stock_config['ticker']
+        print(f"  - {ticker} 조회 중...")
         
-        if per and per <= 25 and drop <= -15:
-            triggers_html += f'<div class="alert">🎯 QCOM 매수 조건 충족: PER {per:.1f}배, 고점比 {drop:.1f}%</div>'
-        else:
-            triggers_html += f'<div class="metric">✅ QCOM 매수 조건: 미충족 (PER {per:.1f}배, 고점比 {drop:.1f}%)</div>'
+        # 기본 가격 정보
+        price_data = get_stock_price(ticker, alphavantage_api_key)
+        if not price_data:
+            print(f"    ❌ {ticker} 가격 조회 실패")
+            continue
+        
+        stock_info = {
+            'ticker': ticker,
+            'type': stock_config['type'],
+            'price_data': price_data
+        }
+        
+        # ISA 트리거 체크 (360750.KS)
+        if stock_config.get('monthly_trigger'):
+            baseline_data = get_monthly_baseline_price(ticker, alphavantage_api_key)
+            if baseline_data:
+                stock_info['baseline_data'] = baseline_data
+                
+                # 트리거 조건 체크
+                change_pct = baseline_data['change_pct']
+                if change_pct <= -10:
+                    isa_trigger_data = {
+                        'ticker': ticker,
+                        'change_pct': change_pct,
+                        'trigger_level': '-10% 이상 하락',
+                        'action': '예비 현금의 60% 추가 매수'
+                    }
+                    print(f"    🚨 ISA 트리거 발동! ({change_pct:.2f}%)")
+                elif change_pct <= -5:
+                    isa_trigger_data = {
+                        'ticker': ticker,
+                        'change_pct': change_pct,
+                        'trigger_level': '-5% 이상 하락',
+                        'action': '예비 현금의 30% 추가 매수'
+                    }
+                    print(f"    ⚠️  ISA 트리거 접근 중 ({change_pct:.2f}%)")
+        
+        # QCOM 매수 조건 체크
+        if stock_config['type'] == 'conditional':
+            fundamentals = get_stock_fundamentals(ticker, alphavantage_api_key)
+            if fundamentals:
+                stock_info['fundamentals'] = fundamentals
+                
+                per = fundamentals.get('per')
+                drop_pct = fundamentals.get('drop_from_high_pct', 0)
+                
+                buy_condition = stock_config.get('buy_condition', {})
+                per_max = buy_condition.get('per_max', 25)
+                drop_min = buy_condition.get('drop_pct_min', 15)
+                
+                if per and per <= per_max and drop_pct <= -drop_min:
+                    qcom_condition_data = {
+                        'ticker': ticker,
+                        'per': per,
+                        'drop_pct': drop_pct,
+                        'action': f'매수 조건 충족 (PER {per:.1f} ≤ {per_max}, 하락 {drop_pct:.1f}% ≥ {drop_min}%)'
+                    }
+                    print(f"    ✅ QCOM 매수 조건 충족!")
+        
+        stock_data.append(stock_info)
+        print(f"    ✅ {ticker}: ${price_data['current_price']} ({price_data['change_pct']:+.2f}%)")
     
-    # 6. AI 거시경제 요약
-    print("\nAI 거시경제 요약 생성 중...")
-    macro_summary = generate_macro_summary(anthropic_key, config['macro_keywords'])
-    
-    # 7. 포트폴리오 비중 체크 (월요일만)
-    portfolio_check_html = ""
-    if now.weekday() == 0:  # 월요일
-        print("포트폴리오 비중 체크 중...")
-        # 실제 보유 비중은 수동으로 업데이트하거나 증권사 API 연동 필요
-        # 여기서는 예시만
-        portfolio_check_html = """
-        <div class="section">
-            <h2>💼 포트폴리오 비중 점검</h2>
-            <p><em>수동 업데이트 필요 또는 증권사 API 연동 시 자동화</em></p>
-        </div>
-        """
-    
-    # 8. 이메일 데이터 구성
-    email_data = {
-        'date': date_str,
-        'fx': fx_info or {'current_rate': 0, 'zone_name': '조회 실패'},
-        'stocks_table': stocks_table,
-        'triggers': triggers_html,
-        'macro_summary': macro_summary or "요약 생성 실패",
-        'portfolio_check': portfolio_check_html
+    # 3. 포트폴리오 한도 체크
+    print("\n[3/5] 포트폴리오 한도 체크 중...")
+    # 간단한 더미 포트폴리오 (실제로는 계좌 데이터 연동 필요)
+    dummy_portfolio = {
+        'total_value': 3000000,  # 3천만원
+        'ai_tech_value': 800000,  # AI/테크 800만원
+        'oxy_value': 250000,     # OXY 250만원
+        'cash_krw': 500000,      # 원화 현금 50만원
+        'cash_usd': 200000       # 달러 현금 20만원
     }
     
-    # 9. 이메일 발송
-    print("\n이메일 발송 중...")
-    email_html = format_email_report(email_data)
+    limit_warnings = check_portfolio_limits(dummy_portfolio, config)
+    if limit_warnings:
+        print("    ⚠️  포트폴리오 한도 경고:")
+        for warning in limit_warnings:
+            print(f"      - {warning}")
+    else:
+        print("    ✅ 모든 한도 정상")
     
-    success = send_email(
-        gmail_address=gmail_address,
-        gmail_password=gmail_password,
-        recipient=config['email_report']['recipient'],
-        subject=f"📊 투자 모니터링 리포트 - {date_str}",
-        body_html=email_html
+    # 4. AI 거시경제 요약 생성
+    print("\n[4/5] AI 거시경제 요약 생성 중...")
+    macro_keywords = ['FOMC', 'CPI', '금리', '인플레이션', 'S&P500', '반도체']
+    macro_summary = None
+    
+    if anthropic_api_key:
+        macro_summary = generate_macro_summary(anthropic_api_key, macro_keywords)
+        if macro_summary:
+            print("    ✅ AI 요약 생성 완료")
+        else:
+            print("    ⚠️  AI 요약 생성 실패 (크레딧 부족 가능)")
+    else:
+        print("    ⚠️  Anthropic API 키 없음 - AI 요약 생략")
+    
+    # 5. 이메일 리포트 발송
+    print("\n[5/5] 이메일 리포트 발송 중...")
+    
+    # 리포트 데이터 구성
+    report_data = {
+        'timestamp': datetime.now(pytz.timezone('Asia/Seoul')).strftime('%Y-%m-%d %H:%M:%S KST'),
+        'fx_rate': fx_rate,
+        'fx_zone_info': fx_zone_info,
+        'stock_data': stock_data,
+        'isa_trigger': isa_trigger_data,
+        'qcom_condition': qcom_condition_data,
+        'portfolio_warnings': limit_warnings,
+        'macro_summary': macro_summary
+    }
+    
+    # HTML 이메일 생성
+    email_html = format_email_report(report_data)
+    
+    # 이메일 발송
+    email_sent = send_email(
+        gmail_address,
+        gmail_app_password,
+        gmail_address,  # 자기 자신에게 발송
+        "📊 투자 모니터링 데일리 리포트",
+        email_html
     )
     
-    if success:
-        print("\n✅ 리포트 발송 완료!")
+    if email_sent:
+        print("    ✅ 이메일 발송 완료")
     else:
-        print("\n❌ 리포트 발송 실패")
+        print("    ❌ 이메일 발송 실패")
     
-    print("=" * 50)
+    # 텔레그램 알림 (중요 이벤트만)
+    if telegram_bot_token and telegram_chat_id:
+        alerts = []
+        
+        if isa_trigger_data:
+            alerts.append(f"🚨 ISA 트리거: {isa_trigger_data['ticker']} {isa_trigger_data['change_pct']:.2f}% - {isa_trigger_data['action']}")
+        
+        if qcom_condition_data:
+            alerts.append(f"✅ QCOM 매수 조건 충족: PER {qcom_condition_data['per']:.1f}, 하락 {qcom_condition_data['drop_pct']:.1f}%")
+        
+        for alert in alerts:
+            send_telegram(telegram_bot_token, telegram_chat_id, alert)
+            print(f"    📱 텔레그램 알림: {alert}")
+    
+    print("\n=== 리포트 생성 완료 ===")
 
 if __name__ == "__main__":
     main()
