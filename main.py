@@ -42,6 +42,9 @@ def main():
         print("❌ 필수 환경변수가 설정되지 않았습니다.")
         return
     
+    # API 한도 초과 플래그
+    api_limit_exceeded = False
+    
     # 1. 환율 조회
     print("\n[1/6] 환율 조회 중...")
     fx_rate = get_fx_rate(exchangerate_api_key)
@@ -120,6 +123,7 @@ def main():
             
             price_data = get_stock_price(ticker, alphavantage_api_key)
             if not price_data:
+                api_limit_exceeded = True
                 print(f"    ❌ {ticker} 가격 조회 실패")
                 continue
             
@@ -137,6 +141,8 @@ def main():
             if baseline_data:
                 stock_info['baseline_data'] = baseline_data
                 print(f"    📊 전월 대비: {baseline_data['change_pct']:+.2f}%")
+            else:
+                api_limit_exceeded = True
             
             # 개별주는 모두 펀더멘탈 조회 (ETF 제외)
             if stock_config['type'] != 'core':  # SPYM 제외
@@ -188,6 +194,8 @@ def main():
                             if not drop_ok:
                                 reason.append(f"하락폭 {drop_from_high:.1f}% < {drop_min}%")
                             print(f"    ⏸️  {ticker} 매수 조건 미충족: {', '.join(reason)}")
+                else:
+                    api_limit_exceeded = True
             
             stock_data.append(stock_info)
             print(f"    ✅ {ticker}: ${price_data['current_price']} ({price_data['change_pct']:+.2f}%)")
@@ -275,15 +283,15 @@ def main():
     for ticker, data in individual_values.items():
         allocations[ticker] = {
             **data,
-            'allocation_pct': (data['value'] / total_assets) * 100
+            'allocation_pct': (data['value'] / total_assets) * 100 if total_assets > 0 else 0
         }
     
-    cash_allocation_pct = (cash_krw / total_assets) * 100
+    cash_allocation_pct = (cash_krw / total_assets) * 100 if total_assets > 0 else 0
     
     # 섹터 비중 계산
     sector_allocations = {}
     for sector, value in sector_values.items():
-        sector_allocations[sector] = (value / total_assets) * 100
+        sector_allocations[sector] = (value / total_assets) * 100 if total_assets > 0 else 0
     
     print(f"    ✅ 총 자산: ₩{total_assets:,.0f} (평가액 ₩{total_value:,.0f} + 현금 ₩{cash_krw:,.0f})")
     print(f"    📊 현금 비중: {cash_allocation_pct:.1f}%")
@@ -402,6 +410,14 @@ def main():
         print("    ❌ 이메일 발송 실패")
     
     print("\n=== 리포트 생성 완료 ===")
+    
+    # API 한도 초과 경고
+    if api_limit_exceeded:
+        print("\n" + "="*50)
+        print("⚠️  Alpha Vantage API 한도 초과!")
+        print("⚠️  일부 데이터 조회 실패")
+        print("⚠️  내일 오전 7시(KST)에 자동으로 다시 시도됩니다")
+        print("="*50)
     
     # API 사용량 요약
     try:

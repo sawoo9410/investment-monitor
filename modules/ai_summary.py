@@ -46,6 +46,7 @@ def generate_macro_summary(api_key: str, keywords: List[str]) -> Optional[str]:
 4. AI/테크 모트 점검 (개조식)
    • GOOGL: 모트 상태
    • QCOM: 모트 상태
+   • OXY: 모트 상태
    • 섹터 리스크: 주요 이슈
 
 [작성 규칙]

@@ -1,20 +1,37 @@
-"""시장 데이터 수집 모듈 (Alpha Vantage API 사용)"""
+"""시장 데이터 수집 모듈 (Alpha Vantage + FinanceDataReader)"""
 import requests
 from datetime import datetime, timedelta
 from typing import Dict, Optional
 import pytz
 import time
 
+# Alpha Vantage API 호출 카운터
+AV_API_CALLS = 0
+AV_DAILY_LIMIT = 25
+
 # FinanceDataReader 추가
 try:
     import FinanceDataReader as fdr
     FDR_AVAILABLE = True
+    print("✅ FinanceDataReader 로드 성공")
 except ImportError as e:
     FDR_AVAILABLE = False
     print(f"⚠️  FinanceDataReader import 실패: {e}")
 except Exception as e:
     FDR_AVAILABLE = False
     print(f"⚠️  FinanceDataReader 예상치 못한 에러: {e}")
+
+def log_av_api_call():
+    """Alpha Vantage API 호출 카운트 및 로깅"""
+    global AV_API_CALLS
+    AV_API_CALLS += 1
+    remaining = AV_DAILY_LIMIT - AV_API_CALLS
+    print(f"    📊 Alpha Vantage API: {AV_API_CALLS}/{AV_DAILY_LIMIT} 사용 (남은 호출: {remaining})")
+    
+    if remaining <= 5:
+        print(f"    ⚠️  API 한도가 {remaining}회만 남았습니다!")
+    
+    return remaining
 
 def get_fx_rate(api_key: str, retry=3, delay=2) -> Optional[float]:
     """USD/KRW 환율 조회"""
@@ -127,6 +144,8 @@ def get_kr_etf_monthly_baseline(ticker: str, retry=3, delay=2) -> Optional[Dict]
             
 def get_stock_price(ticker: str, av_api_key: str, retry=3, delay=3) -> Optional[Dict]:
     """주식/ETF 현재가 및 전일 등락 조회 (Alpha Vantage)"""
+    log_av_api_call()
+    
     for attempt in range(retry):
         try:
             if attempt > 0:
@@ -135,6 +154,14 @@ def get_stock_price(ticker: str, av_api_key: str, retry=3, delay=3) -> Optional[
             url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={av_api_key}"
             response = requests.get(url, timeout=10)
             data = response.json()
+            
+            # API 한도 초과 체크
+            if 'Note' in data or 'Information' in data:
+                error_msg = data.get('Note') or data.get('Information')
+                print(f"    🚨 Alpha Vantage API 한도 초과!")
+                print(f"    📝 {error_msg}")
+                print(f"    ⏰ {ticker} 조회 실패 - 내일 다시 시도됩니다")
+                return None  # 재시도 중단
             
             if 'Global Quote' not in data:
                 print(f"{ticker} 데이터 없음 (시도 {attempt+1}/{retry}): {data}")
@@ -154,7 +181,7 @@ def get_stock_price(ticker: str, av_api_key: str, retry=3, delay=3) -> Optional[
             
             change_pct = ((current_price - prev_close) / prev_close) * 100
             
-            time.sleep(1)  # API rate limit 방지
+            time.sleep(1)
             
             return {
                 'ticker': ticker,
@@ -171,6 +198,8 @@ def get_stock_price(ticker: str, av_api_key: str, retry=3, delay=3) -> Optional[
 
 def get_monthly_baseline_price(ticker: str, av_api_key: str, retry=3, delay=3) -> Optional[Dict]:
     """이번 달 첫 거래일 가격 조회 (ISA 트리거용)"""
+    log_av_api_call()
+    
     for attempt in range(retry):
         try:
             if attempt > 0:
@@ -179,6 +208,13 @@ def get_monthly_baseline_price(ticker: str, av_api_key: str, retry=3, delay=3) -
             url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={ticker}&apikey={av_api_key}&outputsize=compact"
             response = requests.get(url, timeout=10)
             data = response.json()
+            
+            # API 한도 초과 체크
+            if 'Note' in data or 'Information' in data:
+                error_msg = data.get('Note') or data.get('Information')
+                print(f"    🚨 Alpha Vantage API 한도 초과!")
+                print(f"    📝 {error_msg}")
+                return None
             
             if 'Time Series (Daily)' not in data:
                 print(f"{ticker} 일별 데이터 없음 (시도 {attempt+1}/{retry}): {data}")
@@ -233,6 +269,8 @@ def get_monthly_baseline_price(ticker: str, av_api_key: str, retry=3, delay=3) -
 
 def get_stock_fundamentals(ticker: str, av_api_key: str, retry=3, delay=3) -> Optional[Dict]:
     """PER, 52주 고가 등 기본 지표 조회 (QCOM용)"""
+    log_av_api_call()
+    
     for attempt in range(retry):
         try:
             if attempt > 0:
@@ -241,6 +279,13 @@ def get_stock_fundamentals(ticker: str, av_api_key: str, retry=3, delay=3) -> Op
             url = f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={ticker}&apikey={av_api_key}"
             response = requests.get(url, timeout=10)
             data = response.json()
+            
+            # API 한도 초과 체크
+            if 'Note' in data or 'Information' in data:
+                error_msg = data.get('Note') or data.get('Information')
+                print(f"    🚨 Alpha Vantage API 한도 초과!")
+                print(f"    📝 {error_msg}")
+                return None
             
             if not data or 'Symbol' not in data:
                 print(f"{ticker} OVERVIEW 데이터 없음 (시도 {attempt+1}/{retry}): {data}")
@@ -275,40 +320,3 @@ def get_stock_fundamentals(ticker: str, av_api_key: str, retry=3, delay=3) -> Op
                 time.sleep(delay * (attempt + 1))
             else:
                 return None
-
-# ========== 버핏 스타일 심화 지표 (주석 처리 - 테스트 후 활성화) ==========
-
-# def get_buffett_advanced_metrics(ticker: str, av_api_key: str) -> Optional[Dict]:
-#     """버핏 5지표 심화 분석 (재무제표 포함)"""
-#     try:
-#         # OVERVIEW는 위에서 이미 조회했으므로 재무제표만 추가
-#         
-#         # 1. 손익계산서 (ROIC 계산용)
-#         income_url = f"https://www.alphavantage.co/query?function=INCOME_STATEMENT&symbol={ticker}&apikey={av_api_key}"
-#         time.sleep(12)  # Rate limit
-#         income_resp = requests.get(income_url, timeout=10)
-#         income_data = income_resp.json()
-#         
-#         # 2. 재무상태표 (자사주 추적용)
-#         balance_url = f"https://www.alphavantage.co/query?function=BALANCE_SHEET&symbol={ticker}&apikey={av_api_key}"
-#         time.sleep(12)
-#         balance_resp = requests.get(balance_url, timeout=10)
-#         balance_data = balance_resp.json()
-#         
-#         # 3. 현금흐름표 (FCF 계산용)
-#         cashflow_url = f"https://www.alphavantage.co/query?function=CASH_FLOW&symbol={ticker}&apikey={av_api_key}"
-#         time.sleep(12)
-#         cashflow_resp = requests.get(cashflow_url, timeout=10)
-#         cashflow_data = cashflow_resp.json()
-#         
-#         # ROIC, FCF, 자사주 변화 계산 로직 추가 필요
-#         
-#         return {
-#             'ticker': ticker,
-#             'roic': None,  # 계산 로직 구현 필요
-#             'fcf': None,
-#             'shares_outstanding_change': None
-#         }
-#     except Exception as e:
-#         print(f"{ticker} 심화 지표 조회 실패: {e}")
-#         return None
