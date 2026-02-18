@@ -9,9 +9,12 @@ import time
 try:
     import FinanceDataReader as fdr
     FDR_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     FDR_AVAILABLE = False
-    print("⚠️  FinanceDataReader 미설치 - 한국 ETF 조회 불가")
+    print(f"⚠️  FinanceDataReader import 실패: {e}")
+except Exception as e:
+    FDR_AVAILABLE = False
+    print(f"⚠️  FinanceDataReader 예상치 못한 에러: {e}")
 
 def get_fx_rate(api_key: str, retry=3, delay=2) -> Optional[float]:
     """USD/KRW 환율 조회"""
