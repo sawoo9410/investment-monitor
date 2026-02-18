@@ -1,53 +1,27 @@
-"""이메일 및 텔레그램 알림 모듈"""
+"""이메일 알림 모듈"""
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import requests
-from typing import Dict, Optional
+from typing import Dict
 
-def send_email(gmail_address: str, gmail_password: str, recipient: str, subject: str, body_html: str) -> bool:
-    """Gmail SMTP로 이메일 발송"""
+def send_email(from_addr: str, password: str, to_addr: str, subject: str, html_content: str) -> bool:
+    """Gmail SMTP를 통한 HTML 이메일 발송"""
     try:
         msg = MIMEMultipart('alternative')
-        msg['From'] = gmail_address
-        msg['To'] = recipient
         msg['Subject'] = subject
+        msg['From'] = from_addr
+        msg['To'] = to_addr
         
-        html_part = MIMEText(body_html, 'html')
+        html_part = MIMEText(html_content, 'html', 'utf-8')
         msg.attach(html_part)
         
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login(gmail_address, gmail_password)
-            server.send_message(msg)
-        
-        print(f"이메일 발송 성공: {recipient}")
-        return True
-        
+            server.login(from_addr, password)
+            server.sendmail(from_addr, to_addr, msg.as_string())
+            print(f"이메일 발송 성공: {to_addr}")
+            return True
     except Exception as e:
         print(f"이메일 발송 실패: {e}")
-        return False
-
-def send_telegram(bot_token: str, chat_id: str, message: str) -> bool:
-    """텔레그램 메시지 발송"""
-    try:
-        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-        data = {
-            'chat_id': chat_id,
-            'text': message,
-            'parse_mode': 'HTML'
-        }
-        
-        response = requests.post(url, data=data, timeout=10)
-        
-        if response.status_code == 200:
-            print("텔레그램 발송 성공")
-            return True
-        else:
-            print(f"텔레그램 발송 실패: {response.text}")
-            return False
-            
-    except Exception as e:
-        print(f"텔레그램 발송 실패: {e}")
         return False
 
 def format_email_report(report_data: Dict) -> str:
@@ -139,13 +113,18 @@ def format_email_report(report_data: Dict) -> str:
                     <th>현재가</th>
                     <th>전일비</th>
                     <th>전월 1일 대비</th>
-                    <th>등락률</th>
+                    <th>PER</th>
+                    <th>ROE</th>
+                    <th>D/E</th>
+                    <th>Margin</th>
+                    <th>등락</th>
                 </tr>
 """
     
     for stock_info in stock_data:
         price_data = stock_info.get('price_data')
-        baseline_data = stock_info.get('baseline_data')  # ISA 트리거용
+        baseline_data = stock_info.get('baseline_data')
+        fundamentals = stock_info.get('fundamentals')
         
         if price_data:
             ticker = price_data['ticker']
@@ -155,17 +134,16 @@ def format_email_report(report_data: Dict) -> str:
             
             # 한국 종목 vs 미국 종목 단위 구분
             if ticker.endswith('.KS') or ticker.endswith('.KRX'):
-                price_display = f"₩{current:,.0f}"  # 원화, 천 단위 구분
+                price_display = f"₩{current:,.0f}"
             else:
                 price_display = f"${current:.2f}"
             
-            # 전월 1일 대비 (ISA 트리거)
+            # 전월 1일 대비
             if baseline_data:
                 monthly_change = baseline_data['change_pct']
                 monthly_color = 'positive' if monthly_change >= 0 else 'negative'
                 monthly_display = f"<span class='{monthly_color}'>{monthly_change:+.2f}%</span>"
                 
-                # ISA 트리거 경고
                 if monthly_change <= -10:
                     monthly_display += "<br><strong style='color:#dc3545;'>🚨 -10% 트리거</strong>"
                 elif monthly_change <= -5:
@@ -173,12 +151,54 @@ def format_email_report(report_data: Dict) -> str:
             else:
                 monthly_display = "-"
             
+            # 펀더멘탈 표시
+            if fundamentals:
+                per = fundamentals.get('per')
+                roe = fundamentals.get('roe')
+                debt_equity = fundamentals.get('debt_equity')
+                profit_margin = fundamentals.get('profit_margin')
+                
+                # PER
+                per_display = f"{per:.1f}" if per else "-"
+                
+                # ROE (15% 기준)
+                if roe and roe != 'None':
+                    roe_val = float(roe) * 100
+                    roe_color = 'positive' if roe_val >= 15 else 'negative'
+                    roe_display = f"<span class='{roe_color}'>{roe_val:.1f}%</span>"
+                else:
+                    roe_display = "-"
+                
+                # Debt/Equity (1.0 기준)
+                if debt_equity and debt_equity != 'None':
+                    de_val = float(debt_equity)
+                    de_color = 'positive' if de_val <= 1.0 else 'negative'
+                    de_display = f"<span class='{de_color}'>{de_val:.2f}</span>"
+                else:
+                    de_display = "-"
+                
+                # Profit Margin (퍼센트 표시)
+                if profit_margin and profit_margin != 'None':
+                    pm_val = float(profit_margin) * 100
+                    margin_display = f"{pm_val:.1f}%"
+                else:
+                    margin_display = "-"
+            else:
+                per_display = "-"
+                roe_display = "-"
+                de_display = "-"
+                margin_display = "-"
+            
             html += f"""
                 <tr>
                     <td><strong>{ticker}</strong></td>
                     <td>{price_display}</td>
                     <td class="{color_class}">{change_pct:+.2f}%</td>
                     <td>{monthly_display}</td>
+                    <td>{per_display}</td>
+                    <td>{roe_display}</td>
+                    <td>{de_display}</td>
+                    <td>{margin_display}</td>
                     <td class="{color_class}">{'▲' if change_pct >= 0 else '▼'}</td>
                 </tr>
 """
@@ -207,39 +227,3 @@ def format_email_report(report_data: Dict) -> str:
     """
     
     return html
-
-def format_telegram_alert(alert_type: str, data: Dict) -> str:
-    """텔레그램 알림 메시지 포맷"""
-    if alert_type == 'fx_zone_change':
-        return f"""🚨 <b>환율 구간 변경</b>
-
-USD/KRW {data['current_rate']:.2f}원
-[{data['prev_zone']}] → [{data['current_zone']}]
-
-<b>액션:</b> {data['action']}"""
-    
-    elif alert_type == 'isa_trigger':
-        return f"""📉 <b>ISA 매수 트리거 발동</b>
-
-TIGER S&P500 전월比 {data['change_pct']:.1f}%
-→ 예비현금의 {data['buy_pct']}% 추가매수 검토
-
-현재 예비현금: 약 {data['reserve_amount']}만원"""
-    
-    elif alert_type == 'qcom_condition':
-        return f"""🎯 <b>QCOM 매수 조건 진입</b>
-
-PER {data['per']:.1f}배 (기준: 25배↓) ✅
-고점比 {data['drop_pct']:.1f}% (기준: -15%↓) ✅
-
-→ 매수 검토 구간 진입"""
-    
-    elif alert_type == 'stock_drop':
-        return f"""⚠️ <b>{data['ticker']} 급락 감지</b>
-
-전일比 {data['change_pct']:.1f}%
-현재가: ${data['current_price']:.2f}
-
-검토가 필요할 수 있습니다."""
-    
-    return "알림"

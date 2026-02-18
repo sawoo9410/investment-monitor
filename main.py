@@ -1,4 +1,4 @@
-"""투자 모니터링 시스템 - 메인 스크립트"""
+ㅌ"""투자 모니터링 시스템 - 메인 스크립트"""
 import os
 import yaml
 from datetime import datetime
@@ -8,7 +8,10 @@ import time
 from modules.market_data import (
     get_fx_rate,
     get_kr_etf_price,
-    get_kr_etf_monthly_baseline
+    get_kr_etf_monthly_baseline,
+    get_stock_price,
+    get_monthly_baseline_price,
+    get_stock_fundamentals
 )
 from modules.fx_checker import check_fx_zone
 from modules.ai_summary import generate_macro_summary
@@ -35,12 +38,12 @@ def main():
     gmail_address = os.getenv('GMAIL_ADDRESS')
     gmail_app_password = os.getenv('GMAIL_APP_PASSWORD')
     
-    if not all([exchangerate_api_key, gmail_address, gmail_app_password]):
+    if not all([exchangerate_api_key, alphavantage_api_key, gmail_address, gmail_app_password]):
         print("❌ 필수 환경변수가 설정되지 않았습니다.")
         return
     
     # 1. 환율 조회
-    print("\n[1/4] 환율 조회 중...")
+    print("\n[1/5] 환율 조회 중...")
     fx_rate = get_fx_rate(exchangerate_api_key)
     if fx_rate:
         print(f"✅ USD/KRW: {fx_rate:.2f}원")
@@ -50,8 +53,8 @@ def main():
         print("❌ 환율 조회 실패")
         fx_zone_info = None
     
-    # 2. 주식/ETF 데이터 수집 (한국 ETF만)
-    print("\n[2/4] 주식 데이터 수집 중...")
+    # 2. 주식/ETF 데이터 수집 (한국 + 미국)
+    print("\n[2/5] 주식 데이터 수집 중...")
     stock_data = []
     isa_trigger_data = None
     qcom_condition_data = None
@@ -59,7 +62,7 @@ def main():
     for stock_config in config['watchlist']:
         ticker = stock_config['ticker']
         
-        # 한국 ETF만 처리
+        # 한국 ETF 처리
         if ticker.endswith('.KS') or ticker.endswith('.KRX'):
             print(f"  - {ticker} 조회 중...")
             
@@ -110,39 +113,88 @@ def main():
             time.sleep(1)  # Rate limit 방어
         
         else:
-            # 미국 주식 - 아직 주석 처리 (Alpha Vantage 절약)
-            print(f"  - {ticker} (미국 주식 - 비활성화됨)")
-            # ========== Alpha Vantage 호출 주석 시작 ==========
-            # from modules.market_data import get_stock_price, get_stock_fundamentals
-            # price_data = get_stock_price(ticker, alphavantage_api_key)
-            # if not price_data:
-            #     print(f"    ❌ {ticker} 가격 조회 실패")
-            #     continue
-            # 
-            # stock_info = {
-            #     'ticker': ticker,
-            #     'type': stock_config['type'],
-            #     'price_data': price_data
-            # }
-            # 
-            # # QCOM 매수 조건 체크
-            # if stock_config['type'] == 'conditional':
-            #     fundamentals = get_stock_fundamentals(ticker, alphavantage_api_key)
-            #     if fundamentals:
-            #         stock_info['fundamentals'] = fundamentals
-            #         # ... 조건 체크 로직
-            # 
-            # stock_data.append(stock_info)
-            # print(f"    ✅ {ticker}: ${price_data['current_price']} ({price_data['change_pct']:+.2f}%)")
-            # time.sleep(1)
-            # ========== Alpha Vantage 호출 주석 끝 ==========
+            # 미국 주식 처리
+            print(f"  - {ticker} 조회 중...")
+            
+            price_data = get_stock_price(ticker, alphavantage_api_key)
+            if not price_data:
+                print(f"    ❌ {ticker} 가격 조회 실패")
+                continue
+            
+            stock_info = {
+                'ticker': ticker,
+                'type': stock_config['type'],
+                'price_data': price_data
+            }
+            
+            # 전월 1일 대비 조회 (모든 미국 주식)
+            baseline_data = get_monthly_baseline_price(ticker, alphavantage_api_key)
+            if baseline_data:
+                stock_info['baseline_data'] = baseline_data
+                print(f"    📊 전월 대비: {baseline_data['change_pct']:+.2f}%")
+            
+            # 개별주는 모두 펀더멘탈 조회 (ETF 제외)
+            if stock_config['type'] != 'core':  # SPYM 제외
+                fundamentals = get_stock_fundamentals(ticker, alphavantage_api_key)
+                
+                if fundamentals:
+                    stock_info['fundamentals'] = fundamentals
+                    
+                    # 주요 지표 파싱
+                    per = fundamentals.get('per')
+                    roe = fundamentals.get('roe')
+                    debt_equity = fundamentals.get('debt_equity')
+                    profit_margin = fundamentals.get('profit_margin')
+                    drop_from_high = fundamentals.get('drop_from_high_pct', 0)
+                    
+                    # 로그 출력
+                    per_str = f"{per:.1f}" if per else "N/A"
+                    roe_str = f"{float(roe)*100:.1f}%" if roe and roe != 'None' else "N/A"
+                    de_str = f"{float(debt_equity):.2f}" if debt_equity and debt_equity != 'None' else "N/A"
+                    pm_str = f"{float(profit_margin)*100:.1f}%" if profit_margin and profit_margin != 'None' else "N/A"
+                    
+                    print(f"    📈 PER: {per_str} | ROE: {roe_str} | D/E: {de_str} | Margin: {pm_str} | 52주 고점 대비: {drop_from_high:+.1f}%")
+                    
+                    # QCOM만 매수 조건 체크
+                    if stock_config['type'] == 'conditional':
+                        buy_condition = stock_config.get('buy_condition', {})
+                        
+                        per_max = buy_condition.get('per_max', 25)
+                        drop_min = buy_condition.get('drop_pct_min', 15)
+                        
+                        # 조건 충족 여부
+                        per_ok = per is not None and per <= per_max
+                        drop_ok = drop_from_high <= -drop_min
+                        
+                        if per_ok and drop_ok:
+                            qcom_condition_data = {
+                                'ticker': ticker,
+                                'per': per,
+                                'drop_pct': drop_from_high,
+                                'high_52week': fundamentals['high_52week'],
+                                'current_price': fundamentals['current_price'],
+                                'action': f'매수 적기 - PER {per:.1f} (기준 {per_max} 이하), 52주 고점 대비 {drop_from_high:.1f}% (기준 {drop_min}% 이상 하락)'
+                            }
+                            print(f"    🎯 {ticker} 매수 조건 충족!")
+                        else:
+                            reason = []
+                            if not per_ok:
+                                reason.append(f"PER {per:.1f} > {per_max}")
+                            if not drop_ok:
+                                reason.append(f"하락폭 {drop_from_high:.1f}% < {drop_min}%")
+                            print(f"    ⏸️  {ticker} 매수 조건 미충족: {', '.join(reason)}")
+            
+            stock_data.append(stock_info)
+            print(f"    ✅ {ticker}: ${price_data['current_price']} ({price_data['change_pct']:+.2f}%)")
+            
+            time.sleep(2)  # Alpha Vantage Rate limit 방어
     
     # 3. 포트폴리오 한도 체크 (비활성화)
-    print("\n[3/4] 포트폴리오 한도 체크 (비활성화됨)")
+    print("\n[3/5] 포트폴리오 한도 체크 (비활성화됨)")
     limit_warnings = []
     
     # 4. AI 거시경제 요약 생성
-    print("\n[4/4] AI 거시경제 요약 생성 중...")
+    print("\n[4/5] AI 거시경제 요약 생성 중...")
     macro_keywords = ['FOMC', 'CPI', '금리', '인플레이션', 'S&P500', '반도체']
     macro_summary = None
     
@@ -156,7 +208,7 @@ def main():
         print("    ⚠️  Anthropic API 키 없음 - AI 요약 생략")
     
     # 5. 이메일 리포트 발송
-    print("\n[5/4] 이메일 리포트 발송 중...")
+    print("\n[5/5] 이메일 리포트 발송 중...")
     
     report_data = {
         'timestamp': datetime.now(pytz.timezone('Asia/Seoul')).strftime('%Y-%m-%d %H:%M:%S KST'),
@@ -185,6 +237,13 @@ def main():
         print("    ❌ 이메일 발송 실패")
     
     print("\n=== 리포트 생성 완료 ===")
+    
+    # API 사용량 요약
+    from modules.market_data import AV_API_CALLS, AV_DAILY_LIMIT
+    if AV_API_CALLS > 0:
+        usage_pct = (AV_API_CALLS / AV_DAILY_LIMIT) * 100
+        print(f"\n📊 오늘 Alpha Vantage API 사용량: {AV_API_CALLS}/{AV_DAILY_LIMIT} ({usage_pct:.1f}%)")
+        print(f"   남은 호출 수: {AV_DAILY_LIMIT - AV_API_CALLS}회")
 
 if __name__ == "__main__":
     main()
