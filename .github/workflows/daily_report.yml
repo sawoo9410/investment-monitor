@@ -2,8 +2,8 @@ name: Daily Investment Report
 
 on:
   schedule:
-    # 매일 오전 7시 KST (UTC 22:00 = KST 07:00 다음날)
-    - cron: '0 22 * * *'
+    # 평일(월-금) 오전 7시 KST (UTC 22:00)
+    - cron: '0 22 * * 1-5'
   workflow_dispatch:  # 수동 실행 가능
 
 jobs:
@@ -27,10 +27,10 @@ jobs:
     - name: Run report script
       env:
         EXCHANGERATE_API_KEY: ${{ secrets.EXCHANGERATE_API_KEY }}
-        ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}  # 이 줄 추가
+        ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}  # 이것도 추가
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}      # 이것도 추가
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
         GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
       run: |
