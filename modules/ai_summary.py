@@ -10,8 +10,8 @@ def generate_macro_summary(api_key: str, keywords: List[str]) -> Optional[str]:
         keyword_str = ", ".join(keywords)
         
         message = client.messages.create(
-            model="claude-opus-4-5-20251101",  # Opus 4.5
-            max_tokens=1000,  # 출력 토큰 제한
+            model="claude-opus-4-5-20251101",
+            max_tokens=1000,
             messages=[
                 {
                     "role": "user",
@@ -24,23 +24,23 @@ def generate_macro_summary(api_key: str, keywords: List[str]) -> Optional[str]:
 1. 최근 1주일 이내의 주요 경제 이벤트 중심
 2. S&P 500, 반도체, AI 섹터에 미칠 영향 분석
 3. 개인 투자자 관점에서 유의할 점
-4. 3-5문단, 한글로 작성
+4. 3-5문단으로 작성
+5. 마크다운 문법(#, **, -, |) 사용 금지 - 순수 텍스트만 사용
+6. 문단 구분은 빈 줄 하나로만 표시
+7. 한글로 작성
 
-명확하고 실용적인 분석을 제공해주세요."""
+이메일로 읽기 편한 평문 형식으로 작성해주세요."""
                 }
             ]
         )
         
-        # 응답 추출
         if message.content and len(message.content) > 0:
-            summary = message.content[0].text
-            return summary
+            return message.content[0].text
         else:
             return None
             
     except Exception as e:
         print(f"AI 요약 생성 실패: {e}")
-        # 크레딧 부족 또는 API 에러 시 기본 메시지
         return "📌 AI 거시경제 요약을 생성할 수 없습니다.\n주요 경제 이슈는 직접 확인해주세요."
 
 def check_portfolio_limits(portfolio: Dict, config: Dict) -> List[str]:
