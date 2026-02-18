@@ -5,6 +5,14 @@ from typing import Dict, Optional
 import pytz
 import time
 
+# FinanceDataReader 추가
+try:
+    import FinanceDataReader as fdr
+    FDR_AVAILABLE = True
+except ImportError:
+    FDR_AVAILABLE = False
+    print("⚠️  FinanceDataReader 미설치 - 한국 ETF 조회 불가")
+
 def get_fx_rate(api_key: str, retry=3, delay=2) -> Optional[float]:
     """USD/KRW 환율 조회"""
     for attempt in range(retry):
@@ -20,6 +28,100 @@ def get_fx_rate(api_key: str, retry=3, delay=2) -> Optional[float]:
             else:
                 return None
 
+def get_kr_etf_price(ticker: str, retry=3, delay=2) -> Optional[Dict]:
+    """한국 ETF 현재가 및 전일 등락 조회 (FinanceDataReader)"""
+    if not FDR_AVAILABLE:
+        print(f"{ticker} 조회 실패: FinanceDataReader 미설치")
+        return None
+    
+    # ticker에서 .KS 제거
+    clean_ticker = ticker.replace('.KS', '').replace('.KRX', '')
+    
+    for attempt in range(retry):
+        try:
+            if attempt > 0:
+                time.sleep(delay * attempt)
+            
+            # 최근 5일 데이터 가져오기
+            today = datetime.now()
+            start_date = (today - timedelta(days=10)).strftime('%Y-%m-%d')
+            
+            df = fdr.DataReader(clean_ticker, start_date)
+            
+            if df.empty or len(df) < 2:
+                print(f"{ticker} 데이터 부족 (시도 {attempt+1}/{retry})")
+                if attempt < retry - 1:
+                    continue
+                return None
+            
+            current_price = df['Close'].iloc[-1]
+            prev_price = df['Close'].iloc[-2]
+            change_pct = ((current_price - prev_price) / prev_price) * 100
+            
+            time.sleep(2)  # Rate limit 방지
+            
+            return {
+                'ticker': ticker,
+                'current_price': round(current_price, 2),
+                'prev_price': round(prev_price, 2),
+                'change_pct': round(change_pct, 2)
+            }
+        except Exception as e:
+            print(f"{ticker} 조회 실패 (시도 {attempt+1}/{retry}): {e}")
+            if attempt < retry - 1:
+                time.sleep(delay * (attempt + 1))
+            else:
+                return None
+
+def get_kr_etf_monthly_baseline(ticker: str, retry=3, delay=2) -> Optional[Dict]:
+    """한국 ETF 이번 달 첫 거래일 가격 조회 (ISA 트리거용)"""
+    if not FDR_AVAILABLE:
+        return None
+    
+    clean_ticker = ticker.replace('.KS', '').replace('.KRX', '')
+    
+    for attempt in range(retry):
+        try:
+            if attempt > 0:
+                time.sleep(delay * attempt)
+            
+            kst = pytz.timezone('Asia/Seoul')
+            today = datetime.now(kst)
+            
+            # 이번 달 1일부터 오늘까지
+            first_day = today.replace(day=1)
+            start_date = first_day.strftime('%Y-%m-%d')
+            
+            df = fdr.DataReader(clean_ticker, start_date)
+            
+            if df.empty:
+                print(f"{ticker} 월간 데이터 없음 (시도 {attempt+1}/{retry})")
+                if attempt < retry - 1:
+                    continue
+                return None
+            
+            # 이번 달 첫 거래일
+            baseline_date = df.index[0].strftime('%Y-%m-%d')
+            baseline_price = df['Close'].iloc[0]
+            current_price = df['Close'].iloc[-1]
+            change_pct = ((current_price - baseline_price) / baseline_price) * 100
+            
+            time.sleep(2)  # Rate limit 방지
+            
+            return {
+                'ticker': ticker,
+                'baseline_date': baseline_date,
+                'baseline_price': round(baseline_price, 2),
+                'current_price': round(current_price, 2),
+                'change_pct': round(change_pct, 2)
+            }
+        except Exception as e:
+            print(f"{ticker} 월간 기준 조회 실패 (시도 {attempt+1}/{retry}): {e}")
+            if attempt < retry - 1:
+                time.sleep(delay * (attempt + 1))
+            else:
+                return None
+            
 def get_stock_price(ticker: str, av_api_key: str, retry=3, delay=3) -> Optional[Dict]:
     """주식/ETF 현재가 및 전일 등락 조회 (Alpha Vantage)"""
     for attempt in range(retry):
