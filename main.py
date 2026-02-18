@@ -1,4 +1,4 @@
-ㅌ"""투자 모니터링 시스템 - 메인 스크립트"""
+"""투자 모니터링 시스템 - 메인 스크립트"""
 import os
 import yaml
 from datetime import datetime
@@ -43,7 +43,7 @@ def main():
         return
     
     # 1. 환율 조회
-    print("\n[1/5] 환율 조회 중...")
+    print("\n[1/6] 환율 조회 중...")
     fx_rate = get_fx_rate(exchangerate_api_key)
     if fx_rate:
         print(f"✅ USD/KRW: {fx_rate:.2f}원")
@@ -54,7 +54,7 @@ def main():
         fx_zone_info = None
     
     # 2. 주식/ETF 데이터 수집 (한국 + 미국)
-    print("\n[2/5] 주식 데이터 수집 중...")
+    print("\n[2/6] 주식 데이터 수집 중...")
     stock_data = []
     isa_trigger_data = None
     qcom_condition_data = None
@@ -74,6 +74,8 @@ def main():
             stock_info = {
                 'ticker': ticker,
                 'type': stock_config['type'],
+                'name': stock_config.get('name', ticker),
+                'holdings': stock_config.get('holdings', 0),
                 'price_data': price_data
             }
             
@@ -124,6 +126,9 @@ def main():
             stock_info = {
                 'ticker': ticker,
                 'type': stock_config['type'],
+                'name': stock_config.get('name', ticker),
+                'holdings': stock_config.get('holdings', 0),
+                'sector': stock_config.get('sector'),
                 'price_data': price_data
             }
             
@@ -189,12 +194,164 @@ def main():
             
             time.sleep(2)  # Alpha Vantage Rate limit 방어
     
-    # 3. 포트폴리오 한도 체크 (비활성화)
-    print("\n[3/5] 포트폴리오 한도 체크 (비활성화됨)")
+    # 3. holdings_only 종목 가격 조회 (비중 계산용)
+    print("\n[3/6] 기타 보유 종목 가격 조회 중...")
+    holdings_only_data = []
+    
+    for holding_config in config.get('holdings_only', []):
+        ticker = holding_config['ticker']
+        print(f"  - {ticker} 조회 중...")
+        
+        price_data = get_kr_etf_price(ticker)
+        if price_data:
+            holdings_only_data.append({
+                'ticker': ticker,
+                'name': holding_config.get('name', ticker),
+                'holdings': holding_config.get('holdings', 0),
+                'price': price_data['current_price']
+            })
+            print(f"    ✅ {ticker}: ₩{price_data['current_price']:,}")
+        else:
+            print(f"    ❌ {ticker} 가격 조회 실패")
+        
+        time.sleep(1)
+    
+    # 4. 포트폴리오 비중 계산
+    print("\n[4/6] 포트폴리오 비중 계산 중...")
+    
+    portfolio_config = config.get('portfolio', {})
+    cash_krw = portfolio_config.get('cash_krw', 0)
+    
+    # 총 평가액 계산
+    total_value = 0
+    sector_values = {}
+    individual_values = {}
+    
+    # watchlist 종목
+    for stock_info in stock_data:
+        ticker = stock_info['ticker']
+        holdings = stock_info.get('holdings', 0)
+        price = stock_info['price_data']['current_price']
+        
+        # 원화 환산
+        if ticker.endswith('.KS') or ticker.endswith('.KRX'):
+            value_krw = holdings * price
+        else:
+            value_krw = holdings * price * fx_rate
+        
+        total_value += value_krw
+        individual_values[ticker] = {
+            'value': value_krw,
+            'holdings': holdings,
+            'price': price,
+            'name': stock_info.get('name', ticker)
+        }
+        
+        # 섹터별 집계
+        sector = stock_info.get('sector')
+        if sector:
+            if sector not in sector_values:
+                sector_values[sector] = 0
+            sector_values[sector] += value_krw
+    
+    # holdings_only 종목
+    for holding_data in holdings_only_data:
+        ticker = holding_data['ticker']
+        value_krw = holding_data['holdings'] * holding_data['price']
+        total_value += value_krw
+        
+        individual_values[ticker] = {
+            'value': value_krw,
+            'holdings': holding_data['holdings'],
+            'price': holding_data['price'],
+            'name': holding_data.get('name', ticker)
+        }
+    
+    # 총 자산 (평가액 + 현금)
+    total_assets = total_value + cash_krw
+    
+    # 비중 계산
+    allocations = {}
+    for ticker, data in individual_values.items():
+        allocations[ticker] = {
+            **data,
+            'allocation_pct': (data['value'] / total_assets) * 100
+        }
+    
+    cash_allocation_pct = (cash_krw / total_assets) * 100
+    
+    # 섹터 비중 계산
+    sector_allocations = {}
+    for sector, value in sector_values.items():
+        sector_allocations[sector] = (value / total_assets) * 100
+    
+    print(f"    ✅ 총 자산: ₩{total_assets:,.0f} (평가액 ₩{total_value:,.0f} + 현금 ₩{cash_krw:,.0f})")
+    print(f"    📊 현금 비중: {cash_allocation_pct:.1f}%")
+    
+    # 5. 포트폴리오 한도 체크
+    print("\n[5/6] 포트폴리오 한도 체크 중...")
     limit_warnings = []
     
-    # 4. AI 거시경제 요약 생성
-    print("\n[4/5] AI 거시경제 요약 생성 중...")
+    limits = portfolio_config.get('limits', {})
+    sectors_config = portfolio_config.get('sectors', {})
+    
+    # AI·테크 섹터 체크
+    ai_tech_max = limits.get('ai_tech_sector_max', 0.30)
+    ai_tech_pct = sector_allocations.get('ai_tech', 0)
+    
+    if ai_tech_pct > ai_tech_max * 100:
+        limit_warnings.append({
+            'type': 'sector',
+            'sector': 'AI·테크',
+            'current_pct': ai_tech_pct,
+            'limit_pct': ai_tech_max * 100,
+            'message': f"AI·테크 섹터 {ai_tech_pct:.1f}% (한도 {ai_tech_max*100:.0f}% 초과)"
+        })
+        print(f"    ⚠️  AI·테크 섹터 한도 초과: {ai_tech_pct:.1f}%")
+    else:
+        print(f"    ✅ AI·테크 섹터: {ai_tech_pct:.1f}% (한도 {ai_tech_max*100:.0f}% 이내)")
+    
+    # OXY 개별 종목 체크
+    oxy_max = limits.get('oxy_max', 0.10)
+    oxy_pct = allocations.get('OXY', {}).get('allocation_pct', 0)
+    
+    if oxy_pct > oxy_max * 100:
+        limit_warnings.append({
+            'type': 'individual',
+            'ticker': 'OXY',
+            'current_pct': oxy_pct,
+            'limit_pct': oxy_max * 100,
+            'message': f"OXY {oxy_pct:.1f}% (한도 {oxy_max*100:.0f}% 초과)"
+        })
+        print(f"    ⚠️  OXY 한도 초과: {oxy_pct:.1f}%")
+    else:
+        print(f"    ✅ OXY: {oxy_pct:.1f}% (한도 {oxy_max*100:.0f}% 이내)")
+    
+    # 현금 비중 체크
+    cash_min = limits.get('cash_min', 0.15)
+    cash_max = limits.get('cash_max', 0.25)
+    
+    if cash_allocation_pct < cash_min * 100:
+        limit_warnings.append({
+            'type': 'cash',
+            'current_pct': cash_allocation_pct,
+            'limit_pct': cash_min * 100,
+            'message': f"현금 {cash_allocation_pct:.1f}% (최소 {cash_min*100:.0f}% 미달)"
+        })
+        print(f"    ⚠️  현금 부족: {cash_allocation_pct:.1f}%")
+    elif cash_allocation_pct > cash_max * 100:
+        limit_warnings.append({
+            'type': 'cash',
+            'current_pct': cash_allocation_pct,
+            'limit_pct': cash_max * 100,
+            'message': f"현금 {cash_allocation_pct:.1f}% (최대 {cash_max*100:.0f}% 초과)"
+        })
+        print(f"    ⚠️  현금 과다: {cash_allocation_pct:.1f}%")
+    else:
+        print(f"    ✅ 현금: {cash_allocation_pct:.1f}% (목표 범위 {cash_min*100:.0f}~{cash_max*100:.0f}% 이내)")
+    
+    # 6. AI 거시경제 요약 생성
+    print("\n[6/6] AI 거시경제 요약 생성 중...")
     macro_keywords = ['FOMC', 'CPI', '금리', '인플레이션', 'S&P500', '반도체']
     macro_summary = None
     
@@ -207,8 +364,8 @@ def main():
     else:
         print("    ⚠️  Anthropic API 키 없음 - AI 요약 생략")
     
-    # 5. 이메일 리포트 발송
-    print("\n[5/5] 이메일 리포트 발송 중...")
+    # 7. 이메일 리포트 발송
+    print("\n[7/6] 이메일 리포트 발송 중...")
     
     report_data = {
         'timestamp': datetime.now(pytz.timezone('Asia/Seoul')).strftime('%Y-%m-%d %H:%M:%S KST'),
@@ -217,6 +374,14 @@ def main():
         'stock_data': stock_data,
         'isa_trigger': isa_trigger_data,
         'qcom_condition': qcom_condition_data,
+        'portfolio_summary': {
+            'total_assets': total_assets,
+            'total_value': total_value,
+            'cash': cash_krw,
+            'allocations': allocations,
+            'sector_allocations': sector_allocations,
+            'cash_allocation_pct': cash_allocation_pct
+        },
         'portfolio_warnings': limit_warnings,
         'macro_summary': macro_summary
     }

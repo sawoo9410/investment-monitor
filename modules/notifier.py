@@ -32,6 +32,7 @@ def format_email_report(report_data: Dict) -> str:
     stock_data = report_data.get('stock_data', [])
     isa_trigger = report_data.get('isa_trigger')
     qcom_condition = report_data.get('qcom_condition')
+    portfolio_summary = report_data.get('portfolio_summary', {})
     portfolio_warnings = report_data.get('portfolio_warnings', [])
     macro_summary = report_data.get('macro_summary', '')
     
@@ -47,10 +48,11 @@ def format_email_report(report_data: Dict) -> str:
             .success {{ background-color: #d4edda; border-left: 4px solid #28a745; padding: 10px; margin: 10px 0; }}
             .warning {{ background-color: #f8d7da; border-left: 4px solid #dc3545; padding: 10px; margin: 10px 0; }}
             table {{ width: 100%; border-collapse: collapse; margin: 10px 0; }}
-            th, td {{ padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }}
+            th, td {{ padding: 10px; text-align: left; border-bottom: 1px solid #ddd; font-size: 13px; }}
             th {{ background-color: #f2f2f2; font-weight: bold; }}
             .positive {{ color: #28a745; }}
             .negative {{ color: #dc3545; }}
+            .portfolio-item {{ margin: 8px 0; padding: 8px; background-color: #f9f9f9; border-radius: 3px; }}
         </style>
     </head>
     <body>
@@ -103,10 +105,65 @@ def format_email_report(report_data: Dict) -> str:
         
         html += "</div>"
     
+    # 포트폴리오 비중 요약
+    if portfolio_summary:
+        total_assets = portfolio_summary.get('total_assets', 0)
+        total_value = portfolio_summary.get('total_value', 0)
+        cash = portfolio_summary.get('cash', 0)
+        allocations = portfolio_summary.get('allocations', {})
+        sector_allocations = portfolio_summary.get('sector_allocations', {})
+        cash_allocation_pct = portfolio_summary.get('cash_allocation_pct', 0)
+        
+        html += f"""
+        <div class="section">
+            <h2>📊 포트폴리오 비중</h2>
+            <p><strong>총 자산:</strong> ₩{total_assets:,.0f}</p>
+            <p style="font-size: 14px; color: #666;">
+                ├─ 평가액: ₩{total_value:,.0f}<br>
+                └─ 현금: ₩{cash:,.0f} ({cash_allocation_pct:.1f}%)
+            </p>
+            
+            <h3 style="margin-top: 20px;">종목별 비중</h3>
+"""
+        
+        # tracking 종목만 표시
+        for stock_info in stock_data:
+            ticker = stock_info['ticker']
+            if ticker in allocations:
+                alloc = allocations[ticker]
+                html += f"""
+            <div class="portfolio-item">
+                <strong>{ticker}</strong> ({alloc['name']})<br>
+                비중: {alloc['allocation_pct']:.1f}% | 
+                평가액: ₩{alloc['value']:,.0f} | 
+                보유: {alloc['holdings']}주
+            </div>
+"""
+        
+        # 섹터별 비중
+        if sector_allocations:
+            html += "<h3 style='margin-top: 20px;'>섹터별 분석</h3>"
+            
+            ai_tech_pct = sector_allocations.get('ai_tech', 0)
+            if ai_tech_pct > 0:
+                html += f"""
+            <div class="portfolio-item">
+                <strong>AI·테크 섹터:</strong> {ai_tech_pct:.1f}%
+            </div>
+"""
+        
+        # 포트폴리오 경고
+        if portfolio_warnings:
+            html += "<h3 style='margin-top: 20px; color: #dc3545;'>⚠️ 포트폴리오 경고</h3>"
+            for warning in portfolio_warnings:
+                html += f"<div class='alert'>{warning['message']}</div>"
+        
+        html += "</div>"
+    
     # 주식 데이터
     html += """
         <div class="section">
-            <h2>📈 종목 현황</h2>
+            <h2>📈 종목 현황 (tracking)</h2>
             <table>
                 <tr>
                     <th>종목</th>
@@ -149,81 +206,3 @@ def format_email_report(report_data: Dict) -> str:
                 elif monthly_change <= -5:
                     monthly_display += "<br><strong style='color:#ffc107;'>⚠️ -5% 트리거</strong>"
             else:
-                monthly_display = "-"
-            
-            # 펀더멘탈 표시
-            if fundamentals:
-                per = fundamentals.get('per')
-                roe = fundamentals.get('roe')
-                debt_equity = fundamentals.get('debt_equity')
-                profit_margin = fundamentals.get('profit_margin')
-                
-                # PER
-                per_display = f"{per:.1f}" if per else "-"
-                
-                # ROE (15% 기준)
-                if roe and roe != 'None':
-                    roe_val = float(roe) * 100
-                    roe_color = 'positive' if roe_val >= 15 else 'negative'
-                    roe_display = f"<span class='{roe_color}'>{roe_val:.1f}%</span>"
-                else:
-                    roe_display = "-"
-                
-                # Debt/Equity (1.0 기준)
-                if debt_equity and debt_equity != 'None':
-                    de_val = float(debt_equity)
-                    de_color = 'positive' if de_val <= 1.0 else 'negative'
-                    de_display = f"<span class='{de_color}'>{de_val:.2f}</span>"
-                else:
-                    de_display = "-"
-                
-                # Profit Margin (퍼센트 표시)
-                if profit_margin and profit_margin != 'None':
-                    pm_val = float(profit_margin) * 100
-                    margin_display = f"{pm_val:.1f}%"
-                else:
-                    margin_display = "-"
-            else:
-                per_display = "-"
-                roe_display = "-"
-                de_display = "-"
-                margin_display = "-"
-            
-            html += f"""
-                <tr>
-                    <td><strong>{ticker}</strong></td>
-                    <td>{price_display}</td>
-                    <td class="{color_class}">{change_pct:+.2f}%</td>
-                    <td>{monthly_display}</td>
-                    <td>{per_display}</td>
-                    <td>{roe_display}</td>
-                    <td>{de_display}</td>
-                    <td>{margin_display}</td>
-                    <td class="{color_class}">{'▲' if change_pct >= 0 else '▼'}</td>
-                </tr>
-"""
-    
-    html += "</table></div>"
-    
-    # 포트폴리오 경고
-    if portfolio_warnings:
-        html += '<div class="section"><h2>⚠️ 포트폴리오 한도 경고</h2><ul>'
-        for warning in portfolio_warnings:
-            html += f"<li>{warning}</li>"
-        html += "</ul></div>"
-    
-    # AI 거시경제 요약
-    if macro_summary:
-        html += f"""
-        <div class="section">
-            <h2>🤖 AI 거시경제 요약</h2>
-            <div style="white-space: pre-wrap; line-height: 1.8;">{macro_summary}</div>
-        </div>
-"""
-    
-    html += """
-    </body>
-    </html>
-    """
-    
-    return html
