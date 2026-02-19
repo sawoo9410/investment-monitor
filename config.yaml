@@ -12,15 +12,19 @@ fx_rules:
 # 포트폴리오 설정
 portfolio:
   # 현금 (수동 설정, 매달 업데이트)
-  cash_krw: 1900000  # 원화 + 달러(환산) 합계
-  
+  # ⚠️ 매달 1일 실제 잔액으로 업데이트할 것
+  cash:
+    isa_krw: 1550000       # ISA 계좌 현금 (30만원 적립분 누적)
+    toss_krw: 700000      # 토스증권 원화 현금
+    toss_usd: 0         # 토스증권 달러 현금 (USD, 원화 환산은 자동)
+
   # 비중 한도
   limits:
     ai_tech_sector_max: 0.20  # 20%
     oxy_max: 0.10             # 10%
     cash_min: 0.15            # 15%
     cash_max: 0.25            # 25%
-  
+
   # 섹터 분류
   sectors:
     ai_tech:
@@ -29,25 +33,33 @@ portfolio:
 
 # 추적 종목 (daily tracking + 이메일 표시)
 watchlist:
+  # ── 지수 ETF ──────────────────────────────
   - ticker: SPYM
     name: "SPDR S&P 500"
-    type: core
+    type: core          # 지수 ETF → 다기간 수익률 표시
     holdings: 0
     alert_drop_pct: 10
-    
+
+  - ticker: "360750.KS"
+    name: "TIGER 미국S&P500"
+    type: isa_core      # 지수 ETF → 다기간 수익률 + ISA 트리거
+    holdings: 312
+    monthly_trigger: true
+
+  # ── 개별주 ────────────────────────────────
   - ticker: GOOGL
     name: "Alphabet A"
     type: growth
     sector: ai_tech
     holdings: 2
     alert_drop_pct: 7
-    
+
   - ticker: OXY
     name: "Occidental Petroleum"
     type: satellite
     holdings: 1
     alert_drop_pct: 7
-    
+
   - ticker: QCOM
     name: "Qualcomm"
     type: conditional
@@ -57,22 +69,16 @@ watchlist:
       per_max: 25
       drop_pct_min: 15
 
-  - ticker: "360750.KS"
-    name: "TIGER 미국S&P500"
-    type: isa_core
-    holdings: 312
-    monthly_trigger: true
-
 # 비중 계산용만 (가격만 조회, 이메일 미표시)
 holdings_only:
   - ticker: "251350.KS"
     name: "KODEX MSCI선진국"
-    holdings: 48
-    
+    holdings: 24
+
   - ticker: "441640.KS"
     name: "KODEX 미국배당커버드콜액티브"
-    holdings: 96
-    
+    holdings: 46
+
   - ticker: "133690.KS"
     name: "TIGER 미국나스닥100"
     holdings: 47
@@ -91,7 +97,7 @@ email_report:
   enabled: true
   recipient: "sawoo9410@gmail.com"
   schedule: "0 7 * * *"
-  
+
 # 텔레그램 알림 설정
 telegram_alerts:
   enabled: true
