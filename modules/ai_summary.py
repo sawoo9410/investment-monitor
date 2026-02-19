@@ -17,7 +17,7 @@ def generate_macro_summary(api_key: str, keywords: List[str]) -> Optional[str]:
         current_date = today.strftime('%Y년 %m월 %d일')
         
         message = client.messages.create(
-            model="claude-opus-4-5-20251101",
+            model="claude-sonnet-4-6",
             max_tokens=3500,
             tools=[
                 {
