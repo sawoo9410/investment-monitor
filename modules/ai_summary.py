@@ -21,7 +21,7 @@ def generate_macro_summary(api_key: str, keywords: List[str]) -> Optional[str]:
             max_tokens=2500,
             tools=[
                 {
-                    "type": "web_search_20250305",
+                    "type": "web_search_20260209",
                     "name": "web_search"
                 }
             ],
