@@ -18,7 +18,7 @@ def generate_macro_summary(api_key: str, keywords: List[str]) -> Optional[str]:
         
         message = client.messages.create(
             model="claude-opus-4-5-20251101",
-            max_tokens=2500,
+            max_tokens=3500,
             tools=[
                 {
                     "type": "web_search_20260209",
@@ -44,12 +44,11 @@ def generate_macro_summary(api_key: str, keywords: List[str]) -> Optional[str]:
 
 [작성 구조]
 
-1. 미국 주요 지수 (표 형식, 반드시 웹 검색 사용)
-지수 | 종가 | 전일비 | 등락률
-S&P 500 | $x,xxx.xx | +xx.xx | +x.xx%
-Nasdaq | $xx,xxx.xx | +xx.xx | +x.xx%
-Dow Jones | $xx,xxx.xx | +xx.xx | +x.xx%
-Russell 2000 | $x,xxx.xx | +xx.xx | +x.xx%
+1. 미국 주요 지수 (반드시 웹 검색 사용 | 지수, 종가, 전일비, 등락률 표시)
+   • S&P 500: $x,xxx.xx (전일비 +xx.xx, +x.xx%)
+   • Nasdaq: $xx,xxx.xx (전일비 +xx.xx, +0.xx%)
+   • Dow Jones: $xx,xxx.xx (전일비 +xxx.xx, +x.xx%)
+   • Russell 2000: $x,xxx.xx (전일비 +x.xx, +x.xx%)
 
 2. 거시경제 현황 (2-3문장)
    • 주요 경제지표 (CPI, 금리, GDP 등)
@@ -84,11 +83,11 @@ Russell 2000 | $x,xxx.xx | +xx.xx | +x.xx%
    • 최근 1주일 주요 뉴스 (2-3문장)
    • 출처 명시
 
-7. 다가오는 주요 이벤트 (웹 검색으로 향후 2주 이내 이벤트 확인)
-   • 날짜 | 이벤트 | 중요도
-   • 예: 2월 25일 | FOMC 의사록 공개 | 높음
-   • 예: 3월 5일 | 고용 보고서 발표 | 높음
-   • 예: 3월 12일 | CPI 발표 | 높음
+7. 다가오는 주요 이벤트 (웹 검색으로 향후 2주 이내 이벤트 확인 | 날짜, 이벤트, 중요도 포함)
+   • 예: 2월 25일: FOMC 의사록 공개 (중요도: 높음)
+   • 예: 2월 26일: GOOGL 투자자의 날 (중요도: 중간)
+   • 예: 3월 5일: 미국 고용 보고서 발표 (중요도: 높음)
+   • 예: 3월 12일: 2월 CPI 발표 (중요도: 높음)
    • 보유 종목 실적 발표/투자자의 날 포함
 
 8. AI/테크 모트 점검 (개조식)
@@ -98,9 +97,8 @@ Russell 2000 | $x,xxx.xx | +xx.xx | +x.xx%
    • 섹터 리스크: 주요 이슈
 
 [작성 규칙]
-- 표 형식은 정확히 | 구분자 사용
 - 개조식(•)과 서술형 적절히 혼합
-- 마크다운 금지 (#, **, -, |는 표에서만 사용)
+- 마크다운 금지
 - 명확하고 실용적인 톤
 - PER 판단은 반드시 "최근 5년 평균" 기준
 - 한글로 작성
