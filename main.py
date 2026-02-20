@@ -354,16 +354,21 @@ def main():
     else:
         print(f"    ✅ 현금: {cash_allocation_pct:.1f}% (목표 범위 {cash_min*100:.0f}~{cash_max*100:.0f}% 이내)")
     
-    # 6. AI 거시경제 요약
-    print("\n[6/6] AI 거시경제 요약 생성 중...")
-    macro_keywords = ['FOMC', 'CPI', '금리', '인플레이션', 'S&P500', '반도체']
-    macro_summary = None
+    # # 6. AI 거시경제 요약
+    # print("\n[6/6] AI 거시경제 요약 생성 중...")
+    # macro_keywords = ['FOMC', 'CPI', '금리', '인플레이션', 'S&P500', '반도체']
+    # macro_summary = None
     
-    if anthropic_api_key:
-        macro_summary = generate_macro_summary(anthropic_api_key, macro_keywords)
-        print("    ✅ AI 요약 생성 완료" if macro_summary else "    ⚠️  AI 요약 생성 실패")
-    else:
-        print("    ⚠️  Anthropic API 키 없음 - AI 요약 생략")
+    # 6. AI 거시경제 요약 생성
+    print("\n[6/6] AI 거시경제 요약 생성 중...")
+    macro_summary = None
+    print("    ⏸️  AI 요약 비활성화 (Perplexity 전환 예정)")
+
+    # if anthropic_api_key:
+    #     macro_summary = generate_macro_summary(anthropic_api_key, macro_keywords)
+    #     print("    ✅ AI 요약 생성 완료" if macro_summary else "    ⚠️  AI 요약 생성 실패")
+    # else:
+    #     print("    ⚠️  Anthropic API 키 없음 - AI 요약 생략")
     
     # 7. 이메일 발송
     print("\n[7/6] 이메일 리포트 발송 중...")
