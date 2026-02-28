@@ -237,7 +237,8 @@ def format_email_report(report_data: Dict) -> str:
     fx_rate = report_data.get('fx_rate')
     fx_zone_info = report_data.get('fx_zone_info')
     stock_data = report_data.get('stock_data', [])
-    isa_trigger = report_data.get('isa_trigger')
+    isa_trigger = report_data.get("isa_trigger")
+    isa_sell_trigger = report_data.get("isa_sell_trigger")
     qcom_condition = report_data.get('qcom_condition')
     portfolio_summary = report_data.get('portfolio_summary', {})
     portfolio_warnings = report_data.get('portfolio_warnings', [])
@@ -287,16 +288,27 @@ def format_email_report(report_data: Dict) -> str:
     html += "</div>"
     
     # 중요 알림
-    if isa_trigger or qcom_condition:
+    if isa_trigger or isa_sell_trigger or qcom_condition:
         html += '<div class="section"><h2>🚨 중요 알림</h2>'
         
         if isa_trigger:
             html += f"""
             <div class="warning">
-                <strong>ISA 트리거 발동!</strong><br>
+                <strong>📉 ISA 매수 트리거 발동!</strong><br>
                 {isa_trigger['ticker']}: 전월 대비 {isa_trigger['change_pct']:.2f}%<br>
                 트리거 레벨: {isa_trigger['trigger_level']}<br>
                 <strong>액션:</strong> {isa_trigger['action']}
+            </div>
+"""
+        
+
+        if isa_sell_trigger:
+            html += f"""
+            <div class="warning" style="border-left-color:#e67e22; background-color:#fef9f0;">
+                <strong>📈 ISA 매도 트리거 발동!</strong><br>
+                {isa_sell_trigger['ticker']}: 전월 대비 {isa_sell_trigger['change_pct']:.2f}%<br>
+                트리거 레벨: {isa_sell_trigger['trigger_level']}<br>
+                <strong>액션:</strong> {isa_sell_trigger['action']}
             </div>
 """
         
