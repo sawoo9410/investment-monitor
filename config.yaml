@@ -45,7 +45,7 @@ watchlist:
   - ticker: "360750.KS"
     name: "TIGER 미국S&P500"
     type: isa_core
-    holdings: 312
+    holdings: 353
     monthly_trigger: true
 
   - ticker: "133690.KS"
@@ -74,7 +74,7 @@ watchlist:
     name: "Qualcomm"
     type: conditional
     sector: ai_tech
-    holdings: 4
+    holdings: 2
     buy_condition:
       per_max: 25
       drop_pct_min: 15
