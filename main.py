@@ -190,7 +190,8 @@ def main():
             
             if is_index:
                 # SPYM: 다기간 baseline (full outputsize, 1 API call)
-                multi_data = get_us_etf_multi_period_baselines(ticker, alphavantage_api_key)
+                # multi_data = get_us_etf_multi_period_baselines(ticker, alphavantage_api_key)
+                multi_data = get_kr_etf_multi_period_baselines(ticker)  # FDR 사용
                 if multi_data:
                     stock_info['multi_period_data'] = multi_data
                     periods = multi_data.get('periods', {})
