@@ -101,9 +101,9 @@ def get_kr_etf_price(ticker: str, retry=3, delay=2) -> Optional[Dict]:
                 return None
 
 def get_kr_etf_monthly_baseline(ticker: str, retry=3, delay=2) -> Optional[Dict]:
-    """한국 ETF 이번 달 첫 거래일 가격 조회 (ISA 트리거용)
+    """한국 ETF 전월 첫 거래일 가격 조회 (ISA 트리거용)
     
-    이번 달 1일이 주말/휴일이면 가장 가까운 이후 거래일 사용
+    전월 1일이 주말/휴일이면 가장 가까운 이후 거래일 사용
     """
     if not FDR_AVAILABLE:
         return None
@@ -117,11 +117,16 @@ def get_kr_etf_monthly_baseline(ticker: str, retry=3, delay=2) -> Optional[Dict]
             
             kst = pytz.timezone('Asia/Seoul')
             today = datetime.now(kst)
-            first_day = today.replace(day=1)
-            # 주말/휴일 대비 3일 전부터 조회
-            start_date = (first_day - timedelta(days=3)).strftime('%Y-%m-%d')
+
+            # 전월 계산
+            prev_month = today.month - 1 if today.month > 1 else 12
+            prev_year = today.year if today.month > 1 else today.year - 1
+
+            # 전월 1일 기준 조회 (여유 3일 포함)
+            start_date = datetime(prev_year, prev_month, 1) - timedelta(days=3)
+            start_date_str = start_date.strftime('%Y-%m-%d')
             
-            df = fdr.DataReader(clean_ticker, start_date)
+            df = fdr.DataReader(clean_ticker, start_date_str)
             
             if df.empty:
                 print(f"{ticker} 월간 데이터 없음 (시도 {attempt+1}/{retry})")
@@ -129,15 +134,15 @@ def get_kr_etf_monthly_baseline(ticker: str, retry=3, delay=2) -> Optional[Dict]
                     continue
                 return None
             
-            # 이번 달의 첫 거래일 찾기
+            # 전월의 첫 거래일 찾기
             baseline_row = None
             for idx, row in df.iterrows():
-                if idx.year == today.year and idx.month == today.month:
+                if idx.year == prev_year and idx.month == prev_month:
                     baseline_row = (idx, row)
                     break
             
             if baseline_row is None:
-                print(f"{ticker} 이번 달 거래 데이터 없음")
+                print(f"{ticker} 전월 거래 데이터 없음")
                 return None
             
             baseline_date = baseline_row[0].strftime('%Y-%m-%d')
@@ -147,7 +152,7 @@ def get_kr_etf_monthly_baseline(ticker: str, retry=3, delay=2) -> Optional[Dict]
             
             # 1일이 아닌 경우 로그
             if baseline_row[0].day != 1:
-                print(f"    📅 이번 달 1일 휴장, {baseline_date} (첫 거래일) 사용")
+                print(f"    📅 전월 1일 휴장, {baseline_date} (첫 거래일) 사용")
             
             time.sleep(2)
             
@@ -205,9 +210,11 @@ def get_kr_etf_multi_period_baselines(ticker: str, retry=3, delay=2) -> Optional
                 first_price = target_rows['Close'].iloc[0]
                 return first_date, float(first_price)
             
-            # 기간 정의: (레이블, 몇 개월 전)
+            # ✅ 수정: monthly를 1(전월)로 변경
+            # 실행 시점(오전 7시 KST)에는 이번 달 데이터가 아직 없으므로
+            # 전월 첫 거래일을 기준으로 삼아야 함
             period_defs = [
-                ('monthly', 0),   # 이번 달 1일
+                ('monthly', 1),   # 전월 1일 (기존 0 → 1 수정)
                 ('3month', 3),
                 ('6month', 6),
                 ('1year', 12),
@@ -295,9 +302,10 @@ def get_stock_price(ticker: str, av_api_key: str, retry=3, delay=3) -> Optional[
                 return None
 
 def get_monthly_baseline_price(ticker: str, av_api_key: str, retry=3, delay=3) -> Optional[Dict]:
-    """이번 달 첫 거래일 가격 조회 - 개별주용 (Alpha Vantage)
+    """전월 첫 거래일 가격 조회 - 개별주용 (Alpha Vantage)
     
-    이번 달 1일이 주말/휴일이면 가장 가까운 이후 거래일 사용
+    전월 1일이 주말/휴일이면 가장 가까운 이후 거래일 사용.
+    실행 시점(오전 7시 KST)에는 이번 달 데이터가 없으므로 전월 기준 사용.
     """
     log_av_api_call()
     
@@ -330,28 +338,32 @@ def get_monthly_baseline_price(ticker: str, av_api_key: str, retry=3, delay=3) -
             
             kst = pytz.timezone('Asia/Seoul')
             today = datetime.now(kst)
+
+            # ✅ 수정: 전월 계산
+            prev_month = today.month - 1 if today.month > 1 else 12
+            prev_year = today.year if today.month > 1 else today.year - 1
             
-            # 이번 달의 첫 거래일 찾기
+            # 전월의 첫 거래일 찾기 (날짜 오름차순으로 순회)
             baseline_date = None
             baseline_price = None
             
             for date_str in reversed(dates):
                 date_obj = datetime.strptime(date_str, '%Y-%m-%d')
-                if date_obj.year == today.year and date_obj.month == today.month:
+                if date_obj.year == prev_year and date_obj.month == prev_month:
                     baseline_date = date_str
                     baseline_price = float(time_series[date_str]['4. close'])
                     
-                    # 1일이 아닌 경우 로그
                     if date_obj.day != 1:
-                        print(f"    📅 이번 달 1일 휴장, {baseline_date} (첫 거래일) 사용")
+                        print(f"    📅 전월 1일 휴장, {baseline_date} (첫 거래일) 사용")
                     
                     break
             
-            # 이번 달 데이터가 없으면 가장 최근 데이터 사용
+            # 전월 데이터가 없으면 조회 실패 처리 (compact=100일치이므로 거의 없음)
             if baseline_date is None:
-                baseline_date = dates[0]
-                baseline_price = float(time_series[baseline_date]['4. close'])
+                print(f"    ⚠️  {ticker} 전월 데이터 없음 - 조회 실패")
+                return None
             
+            # current_price는 가장 최근 종가 (main.py에서 실시간 가격으로 덮어씀)
             current_price = float(time_series[dates[0]]['4. close'])
             change_pct = ((current_price - baseline_price) / baseline_price) * 100
             
@@ -417,9 +429,9 @@ def get_us_etf_multi_period_baselines(ticker: str, av_api_key: str, retry=3, del
                         return date_str, float(time_series[date_str]['4. close'])
                 return None, None
             
-            # 기간 정의: (레이블, 몇 개월 전)
+            # ✅ 수정: monthly를 1(전월)로 변경
             period_defs = [
-                ('monthly', 0),   # 이번 달 1일
+                ('monthly', 1),   # 전월 1일 (기존 0 → 1 수정)
                 ('3month', 3),
                 ('6month', 6),
                 ('1year', 12),
