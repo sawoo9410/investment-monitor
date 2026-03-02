@@ -101,7 +101,10 @@ def get_kr_etf_price(ticker: str, retry=3, delay=2) -> Optional[Dict]:
                 return None
 
 def get_kr_etf_monthly_baseline(ticker: str, retry=3, delay=2) -> Optional[Dict]:
-    """한국 ETF 이번 달 첫 거래일 가격 조회 (ISA 트리거용)"""
+    """한국 ETF 이번 달 첫 거래일 가격 조회 (ISA 트리거용)
+    
+    이번 달 1일이 주말/휴일이면 가장 가까운 이후 거래일 사용
+    """
     if not FDR_AVAILABLE:
         return None
     
@@ -115,7 +118,8 @@ def get_kr_etf_monthly_baseline(ticker: str, retry=3, delay=2) -> Optional[Dict]
             kst = pytz.timezone('Asia/Seoul')
             today = datetime.now(kst)
             first_day = today.replace(day=1)
-            start_date = first_day.strftime('%Y-%m-%d')
+            # 주말/휴일 대비 3일 전부터 조회
+            start_date = (first_day - timedelta(days=3)).strftime('%Y-%m-%d')
             
             df = fdr.DataReader(clean_ticker, start_date)
             
@@ -125,10 +129,25 @@ def get_kr_etf_monthly_baseline(ticker: str, retry=3, delay=2) -> Optional[Dict]
                     continue
                 return None
             
-            baseline_date = df.index[0].strftime('%Y-%m-%d')
-            baseline_price = df['Close'].iloc[0]
+            # 이번 달의 첫 거래일 찾기
+            baseline_row = None
+            for idx, row in df.iterrows():
+                if idx.year == today.year and idx.month == today.month:
+                    baseline_row = (idx, row)
+                    break
+            
+            if baseline_row is None:
+                print(f"{ticker} 이번 달 거래 데이터 없음")
+                return None
+            
+            baseline_date = baseline_row[0].strftime('%Y-%m-%d')
+            baseline_price = baseline_row[1]['Close']
             current_price = df['Close'].iloc[-1]
             change_pct = ((current_price - baseline_price) / baseline_price) * 100
+            
+            # 1일이 아닌 경우 로그
+            if baseline_row[0].day != 1:
+                print(f"    📅 이번 달 1일 휴장, {baseline_date} (첫 거래일) 사용")
             
             time.sleep(2)
             
@@ -150,6 +169,7 @@ def get_kr_etf_multi_period_baselines(ticker: str, retry=3, delay=2) -> Optional
     """한국 ETF 다기간 기준가 조회 (전월 1일, 3개월, 6개월, 1년 전 1일)
     
     지수 ETF 전용. FDR로 1년치 데이터 한 번에 가져와 모든 기간 추출.
+    각 기간의 1일이 주말/휴일이면 해당 월의 첫 거래일 사용.
     """
     if not FDR_AVAILABLE:
         return None
@@ -177,7 +197,7 @@ def get_kr_etf_multi_period_baselines(ticker: str, retry=3, delay=2) -> Optional
             current_price = df['Close'].iloc[-1]
             
             def find_first_trading_day(year, month):
-                """특정 연월의 첫 거래일 가격 반환"""
+                """특정 연월의 첫 거래일 가격 반환 (주말/휴일 자동 대응)"""
                 target_rows = df[(df.index.year == year) & (df.index.month == month)]
                 if target_rows.empty:
                     return None, None
@@ -275,7 +295,10 @@ def get_stock_price(ticker: str, av_api_key: str, retry=3, delay=3) -> Optional[
                 return None
 
 def get_monthly_baseline_price(ticker: str, av_api_key: str, retry=3, delay=3) -> Optional[Dict]:
-    """이번 달 첫 거래일 가격 조회 - 개별주용 (Alpha Vantage)"""
+    """이번 달 첫 거래일 가격 조회 - 개별주용 (Alpha Vantage)
+    
+    이번 달 1일이 주말/휴일이면 가장 가까운 이후 거래일 사용
+    """
     log_av_api_call()
     
     for attempt in range(retry):
@@ -308,6 +331,7 @@ def get_monthly_baseline_price(ticker: str, av_api_key: str, retry=3, delay=3) -
             kst = pytz.timezone('Asia/Seoul')
             today = datetime.now(kst)
             
+            # 이번 달의 첫 거래일 찾기
             baseline_date = None
             baseline_price = None
             
@@ -316,8 +340,14 @@ def get_monthly_baseline_price(ticker: str, av_api_key: str, retry=3, delay=3) -
                 if date_obj.year == today.year and date_obj.month == today.month:
                     baseline_date = date_str
                     baseline_price = float(time_series[date_str]['4. close'])
+                    
+                    # 1일이 아닌 경우 로그
+                    if date_obj.day != 1:
+                        print(f"    📅 이번 달 1일 휴장, {baseline_date} (첫 거래일) 사용")
+                    
                     break
             
+            # 이번 달 데이터가 없으면 가장 최근 데이터 사용
             if baseline_date is None:
                 baseline_date = dates[0]
                 baseline_price = float(time_series[baseline_date]['4. close'])
@@ -345,6 +375,7 @@ def get_us_etf_multi_period_baselines(ticker: str, av_api_key: str, retry=3, del
     """미국 지수 ETF 다기간 기준가 조회 (전월 1일, 3개월, 6개월, 1년 전 1일)
     
     지수 ETF 전용. outputsize=full로 1년치 데이터를 1회 호출로 처리.
+    각 기간의 1일이 주말/휴일이면 해당 월의 첫 거래일 사용.
     """
     log_av_api_call()
     
@@ -379,7 +410,7 @@ def get_us_etf_multi_period_baselines(ticker: str, av_api_key: str, retry=3, del
             current_price = float(time_series[dates[0]]['4. close'])
             
             def find_first_trading_day(year, month):
-                """특정 연월의 첫 거래일 가격 반환"""
+                """특정 연월의 첫 거래일 가격 반환 (주말/휴일 자동 대응)"""
                 for date_str in reversed(dates):
                     d = datetime.strptime(date_str, '%Y-%m-%d')
                     if d.year == year and d.month == month:
