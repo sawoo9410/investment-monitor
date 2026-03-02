@@ -210,6 +210,12 @@ def main():
                 # 개별주: 전월 1일 baseline + 펀더멘탈
                 baseline_data = get_monthly_baseline_price(ticker, alphavantage_api_key)
                 if baseline_data:
+                    # ✅ 오늘 실시간 가격으로 교체 (TIME_SERIES_DAILY는 어제까지만)
+                    baseline_data['current_price'] = price_data['current_price']
+                    baseline_data['change_pct'] = (
+                        (price_data['current_price'] - baseline_data['baseline_price']) 
+                        / baseline_data['baseline_price'] * 100
+                    )
                     stock_info['baseline_data'] = baseline_data
                     print(f"    📊 전월 대비: {baseline_data['change_pct']:+.2f}%")
                 else:
