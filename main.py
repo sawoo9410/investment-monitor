@@ -273,7 +273,7 @@ def main():
     print("\n[3/5] 기타 보유 종목 가격 조회 중...")
     holdings_only_data = []
     
-    for holding_config in config.get('holdings_only', []):
+    for holding_config in (config.get('holdings_only') or []):
         ticker = holding_config['ticker']
         print(f"  - {ticker} 조회 중...")
         
