@@ -147,6 +147,51 @@ def _render_index_etf_table(stock_data):
         </div>
 """
 
+    # ── SPYM 매수 트리거 기준가 표시 ──────────────────────────────
+    spym = next(
+        (s for s in index_stocks if s.get('price_data', {}).get('ticker') == 'SPYM'),
+        None
+    )
+    if spym:
+        multi = spym.get('multi_period_data')
+        monthly = multi.get('periods', {}).get('monthly') if multi else None
+        if monthly:
+            baseline_price = monthly['price']
+            baseline_date  = monthly['date']
+            price_5pct  = baseline_price * 0.95
+            price_10pct = baseline_price * 0.90
+            current_price = spym['price_data']['current_price']
+
+            color_5  = '#dc3545' if current_price <= price_5pct  else '#333'
+            color_10 = '#dc3545' if current_price <= price_10pct else '#333'
+
+            html += f"""
+        <div style="margin-top:10px; padding:10px; background-color:#f8f9fa; border-radius:5px; font-size:13px;">
+            <strong>🎯 SPYM 매수 트리거 기준</strong>
+            <span style="color:#888; margin-left:8px;">(전월 말일 기준가: ${baseline_price:.2f} | {baseline_date})</span>
+            <table style="margin-top:8px; width:auto;">
+                <tr>
+                    <th style="padding:6px 16px 6px 6px;">구간</th>
+                    <th style="padding:6px 16px 6px 6px;">트리거 가격</th>
+                    <th style="padding:6px 16px 6px 6px;">액션</th>
+                    <th style="padding:6px 6px 6px 6px;">상태</th>
+                </tr>
+                <tr>
+                    <td style="padding:6px 16px 6px 6px; color:{color_5};"><strong>-5%</strong></td>
+                    <td style="padding:6px 16px 6px 6px; color:{color_5};">${price_5pct:.2f}</td>
+                    <td style="padding:6px 16px 6px 6px;">예비 현금 30% 매수</td>
+                    <td style="padding:6px 6px 6px 6px;">{'🚨 트리거 발동' if current_price <= price_5pct else '✅ 미도달'}</td>
+                </tr>
+                <tr>
+                    <td style="padding:6px 16px 6px 6px; color:{color_10};"><strong>-10%</strong></td>
+                    <td style="padding:6px 16px 6px 6px; color:{color_10};">${price_10pct:.2f}</td>
+                    <td style="padding:6px 16px 6px 6px;">예비 현금 60% 매수</td>
+                    <td style="padding:6px 6px 6px 6px;">{'🚨 트리거 발동' if current_price <= price_10pct else '✅ 미도달'}</td>
+                </tr>
+            </table>
+        </div>
+"""
+
     html += "</div>"
     return html
 
