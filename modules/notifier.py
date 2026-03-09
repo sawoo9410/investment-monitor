@@ -51,7 +51,7 @@ def _render_index_etf_table(stock_data):
                     <th>종목</th>
                     <th>현재가</th>
                     <th>전일비</th>
-                    <th>전월 1일</th>
+                    <th>전월 말일</th>
                     <th>3개월 전</th>
                     <th>6개월 전</th>
                     <th>1년 전</th>
@@ -123,7 +123,7 @@ def _render_index_etf_table(stock_data):
             html += f"""
         <div style="margin-top:10px; padding:10px; background-color:#f8f9fa; border-radius:5px; font-size:13px;">
             <strong>🎯 360750.KS 매수 트리거 기준</strong>
-            <span style="color:#888; margin-left:8px;">(전월 1일 기준가: ₩{baseline_price:,.0f} | {baseline_date})</span>
+            <span style="color:#888; margin-left:8px;">(전월 말일 기준가: ₩{baseline_price:,.0f} | {baseline_date})</span>
             <table style="margin-top:8px; width:auto;">
                 <tr>
                     <th style="padding:6px 16px 6px 6px;">구간</th>
@@ -151,7 +151,7 @@ def _render_index_etf_table(stock_data):
     return html
 
 def _render_individual_stock_table(stock_data):
-    """개별주 테이블: 전일비 + 전월 1일 + 펀더멘탈"""
+    """개별주 테이블: 전일비 + 전월 말일 + 펀더멘탈"""
     html = """
         <div class="section">
             <h2>📊 개별주 현황</h2>
@@ -160,7 +160,7 @@ def _render_individual_stock_table(stock_data):
                     <th>종목</th>
                     <th>현재가</th>
                     <th>전일비</th>
-                    <th>전월 1일</th>
+                    <th>전월 말일</th>
                     <th>PER</th>
                     <th>ROE</th>
                     <th>D/E</th>
@@ -180,7 +180,7 @@ def _render_individual_stock_table(stock_data):
         change_pct = price_data['change_pct']
         price_display = f"${current:.2f}"
         
-        # 전월 1일 대비
+        # 전월 말일 대비
         baseline_data = stock_info.get('baseline_data')
         if baseline_data:
             monthly_change = baseline_data['change_pct']
