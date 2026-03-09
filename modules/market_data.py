@@ -377,11 +377,13 @@ def get_us_etf_multi_period_baselines(ticker: str, av_api_key: str, retry=3, del
             data = response.json()
 
             if 'Note' in data or 'Information' in data:
+                error_msg = data.get('Note') or data.get('Information')
                 print(f"    🚨 Alpha Vantage API 한도 초과!")
+                print(f"    📝 실제 메시지: {error_msg}")
                 return None
 
             if 'Time Series (Daily)' not in data:
-                print(f"{ticker} 일별 데이터 없음 (시도 {attempt+1}/{retry})")
+                print(f"{ticker} 일별 데이터 없음 (시도 {attempt+1}/{retry}): {data}")
                 if attempt < retry - 1:
                     continue
                 return None
