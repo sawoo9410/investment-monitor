@@ -372,7 +372,7 @@ def get_us_etf_multi_period_baselines(ticker: str, av_api_key: str, retry=3, del
 
             # ✅ 분당 5회 제한 대응: full 요청 전 충분한 대기
             time.sleep(15)
-            url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={ticker}&apikey={av_api_key}&outputsize=full"
+            url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={ticker}&apikey={av_api_key}&outputsize=compact"
             response = requests.get(url, timeout=15)
             data = response.json()
 
