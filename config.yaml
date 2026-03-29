@@ -14,9 +14,9 @@ portfolio:
   # 현금 (수동 설정, 매달 업데이트)
   # ⚠️ 매달 1일 실제 잔액으로 업데이트할 것
   cash:
-    isa_krw: 2900000 # ISA 계좌 현금
-    toss_krw: 400000 # 토스증권 원화 현금
-    toss_usd: 0 # 토스증권 달러 현금 (USD, 원화 환산은 자동)
+    isa_krw: 1900000 # ISA 계좌 현금
+    toss_krw: 0 # 400000 # 토스증권 원화 현금
+    toss_usd: 10 # 토스증권 달러 현금 (USD, 원화 환산은 자동)
 
   # 비중 한도
   limits:
@@ -45,7 +45,7 @@ watchlist:
   - ticker: "360750.KS"
     name: "TIGER 미국S&P500"
     type: isa_core
-    holdings: 353
+    holdings: 395
     monthly_trigger: true
 
   - ticker: "133690.KS"
@@ -74,7 +74,7 @@ watchlist:
     name: "Qualcomm"
     type: conditional
     sector: ai_tech
-    holdings: 2
+    holdings: 4
     buy_condition:
       per_max: 25
       drop_pct_min: 15
