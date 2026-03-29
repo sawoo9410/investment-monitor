@@ -51,7 +51,7 @@ def _render_index_etf_table(stock_data):
                     <th>종목</th>
                     <th>현재가</th>
                     <th>전일비</th>
-                    <th>전월 1일</th>
+                    <th>전월 말일</th>
                     <th>3개월 전</th>
                     <th>6개월 전</th>
                     <th>1년 전</th>
@@ -99,11 +99,104 @@ def _render_index_etf_table(stock_data):
                 </tr>
 """
     
-    html += "</table></div>"
+    html += "</table>"
+
+    # ── 360750.KS 매수 트리거 기준가 표시 ──────────────────────────
+    isa_core = next(
+        (s for s in index_stocks if s.get('price_data', {}).get('ticker') == '360750.KS'),
+        None
+    )
+    if isa_core:
+        multi = isa_core.get('multi_period_data')
+        monthly = multi.get('periods', {}).get('monthly') if multi else None
+        if monthly:
+            baseline_price = monthly['price']
+            baseline_date  = monthly['date']
+            price_5pct  = baseline_price * 0.95
+            price_10pct = baseline_price * 0.90
+            current_price = isa_core['price_data']['current_price']
+
+            # 현재가와 비교해 색상 처리
+            color_5  = '#dc3545' if current_price <= price_5pct  else '#333'
+            color_10 = '#dc3545' if current_price <= price_10pct else '#333'
+
+            html += f"""
+        <div style="margin-top:10px; padding:10px; background-color:#f8f9fa; border-radius:5px; font-size:13px;">
+            <strong>🎯 360750.KS 매수 트리거 기준</strong>
+            <span style="color:#888; margin-left:8px;">(전월 말일 기준가: ₩{baseline_price:,.0f} | {baseline_date})</span>
+            <table style="margin-top:8px; width:auto;">
+                <tr>
+                    <th style="padding:6px 16px 6px 6px;">구간</th>
+                    <th style="padding:6px 16px 6px 6px;">트리거 가격</th>
+                    <th style="padding:6px 16px 6px 6px;">액션</th>
+                    <th style="padding:6px 6px 6px 6px;">상태</th>
+                </tr>
+                <tr>
+                    <td style="padding:6px 16px 6px 6px; color:{color_5};"><strong>-5%</strong></td>
+                    <td style="padding:6px 16px 6px 6px; color:{color_5};">₩{price_5pct:,.0f}</td>
+                    <td style="padding:6px 16px 6px 6px;">예비 현금 30% 매수</td>
+                    <td style="padding:6px 6px 6px 6px;">{'🚨 트리거 발동' if current_price <= price_5pct else '✅ 미도달'}</td>
+                </tr>
+                <tr>
+                    <td style="padding:6px 16px 6px 6px; color:{color_10};"><strong>-10%</strong></td>
+                    <td style="padding:6px 16px 6px 6px; color:{color_10};">₩{price_10pct:,.0f}</td>
+                    <td style="padding:6px 16px 6px 6px;">예비 현금 60% 매수</td>
+                    <td style="padding:6px 6px 6px 6px;">{'🚨 트리거 발동' if current_price <= price_10pct else '✅ 미도달'}</td>
+                </tr>
+            </table>
+        </div>
+"""
+
+    # ── SPYM 매수 트리거 기준가 표시 ──────────────────────────────
+    spym = next(
+        (s for s in index_stocks if s.get('price_data', {}).get('ticker') == 'SPYM'),
+        None
+    )
+    if spym:
+        multi = spym.get('multi_period_data')
+        monthly = multi.get('periods', {}).get('monthly') if multi else None
+        if monthly:
+            baseline_price = monthly['price']
+            baseline_date  = monthly['date']
+            price_5pct  = baseline_price * 0.95
+            price_10pct = baseline_price * 0.90
+            current_price = spym['price_data']['current_price']
+
+            color_5  = '#dc3545' if current_price <= price_5pct  else '#333'
+            color_10 = '#dc3545' if current_price <= price_10pct else '#333'
+
+            html += f"""
+        <div style="margin-top:10px; padding:10px; background-color:#f8f9fa; border-radius:5px; font-size:13px;">
+            <strong>🎯 SPYM 매수 트리거 기준</strong>
+            <span style="color:#888; margin-left:8px;">(전월 말일 기준가: ${baseline_price:.2f} | {baseline_date})</span>
+            <table style="margin-top:8px; width:auto;">
+                <tr>
+                    <th style="padding:6px 16px 6px 6px;">구간</th>
+                    <th style="padding:6px 16px 6px 6px;">트리거 가격</th>
+                    <th style="padding:6px 16px 6px 6px;">액션</th>
+                    <th style="padding:6px 6px 6px 6px;">상태</th>
+                </tr>
+                <tr>
+                    <td style="padding:6px 16px 6px 6px; color:{color_5};"><strong>-5%</strong></td>
+                    <td style="padding:6px 16px 6px 6px; color:{color_5};">${price_5pct:.2f}</td>
+                    <td style="padding:6px 16px 6px 6px;">예비 현금 30% 매수</td>
+                    <td style="padding:6px 6px 6px 6px;">{'🚨 트리거 발동' if current_price <= price_5pct else '✅ 미도달'}</td>
+                </tr>
+                <tr>
+                    <td style="padding:6px 16px 6px 6px; color:{color_10};"><strong>-10%</strong></td>
+                    <td style="padding:6px 16px 6px 6px; color:{color_10};">${price_10pct:.2f}</td>
+                    <td style="padding:6px 16px 6px 6px;">예비 현금 60% 매수</td>
+                    <td style="padding:6px 6px 6px 6px;">{'🚨 트리거 발동' if current_price <= price_10pct else '✅ 미도달'}</td>
+                </tr>
+            </table>
+        </div>
+"""
+
+    html += "</div>"
     return html
 
 def _render_individual_stock_table(stock_data):
-    """개별주 테이블: 전일비 + 전월 1일 + 펀더멘탈"""
+    """개별주 테이블: 전일비 + 전월 말일 + 펀더멘탈"""
     html = """
         <div class="section">
             <h2>📊 개별주 현황</h2>
@@ -112,7 +205,7 @@ def _render_individual_stock_table(stock_data):
                     <th>종목</th>
                     <th>현재가</th>
                     <th>전일비</th>
-                    <th>전월 1일</th>
+                    <th>전월 말일</th>
                     <th>PER</th>
                     <th>ROE</th>
                     <th>D/E</th>
@@ -132,7 +225,7 @@ def _render_individual_stock_table(stock_data):
         change_pct = price_data['change_pct']
         price_display = f"${current:.2f}"
         
-        # 전월 1일 대비
+        # 전월 말일 대비
         baseline_data = stock_info.get('baseline_data')
         if baseline_data:
             monthly_change = baseline_data['change_pct']
@@ -193,7 +286,7 @@ def _render_cash_section(cash_info: Dict) -> str:
     isa_krw = cash_info.get('isa_krw', 0)
     toss_krw = cash_info.get('toss_krw', 0)
     toss_usd = cash_info.get('toss_usd', 0)
-    toss_usd_krw = cash_info.get('toss_usd_krw', 0)   # 달러 → 원화 환산액
+    toss_usd_krw = cash_info.get('toss_usd_krw', 0)
     total_cash = cash_info.get('total_cash', 0)
     cash_pct = cash_info.get('cash_allocation_pct', 0)
     
@@ -301,7 +394,6 @@ def format_email_report(report_data: Dict) -> str:
             </div>
 """
         
-
         if isa_sell_trigger:
             html += f"""
             <div class="warning" style="border-left-color:#e67e22; background-color:#fef9f0;">
@@ -381,7 +473,7 @@ def format_email_report(report_data: Dict) -> str:
     if cash_info:
         html += _render_cash_section(cash_info)
     
-    # 지수 ETF 테이블
+    # 지수 ETF 테이블 (트리거 기준가 포함)
     html += _render_index_etf_table(stock_data)
     
     # 개별주 테이블
