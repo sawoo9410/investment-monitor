@@ -448,4 +448,16 @@ def main():
     if api_limit_exceeded:
         print("\n" + "="*50)
         print("⚠️  Alpha Vantage API 한도 초과 - 일부 데이터 조회 실패")
-        prin
+        print("="*50)
+
+    try:
+        from modules.market_data import AV_API_CALLS, AV_DAILY_LIMIT
+        if AV_API_CALLS > 0:
+            usage_pct = (AV_API_CALLS / AV_DAILY_LIMIT) * 100
+            print(f"\n📊 오늘 Alpha Vantage API 사용량: {AV_API_CALLS}/{AV_DAILY_LIMIT} ({usage_pct:.1f}%)")
+            print(f"   남은 호출 수: {AV_DAILY_LIMIT - AV_API_CALLS}회")
+    except ImportError:
+        pass
+
+if __name__ == "__main__":
+    main()
