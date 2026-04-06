@@ -137,7 +137,7 @@ def main():
                                 'baseline_price': two_month['price'],
                                 'current_price': multi_data['current_price'],
                                 'trigger_level': '2달 전 대비 -10% 이상 하락',
-                                'action': '현금 버퍼에서 100만원 추가 매수'
+                                'action': '현금 버퍼에서 50만원 추가 매수'
                             }
                             print(f"    🚨 ISA 2달 전 트리거 발동! ({change_2m:.2f}%)")
                         elif change_2m <= -5:

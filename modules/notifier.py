@@ -195,7 +195,7 @@ def _render_index_etf_table(stock_data, isa_active_ticker='360750.KS'):
                 <tr>
                     <td style="padding:6px 16px 6px 6px; color:{color_2m_10};"><strong>-10%</strong></td>
                     <td style="padding:6px 16px 6px 6px; color:{color_2m_10};">₩{price_2m_10pct:,.0f}</td>
-                    <td style="padding:6px 16px 6px 6px;">현금 버퍼에서 100만원 추가 매수</td>
+                    <td style="padding:6px 16px 6px 6px;">현금 버퍼에서 50만원 추가 매수</td>
                     <td style="padding:6px 6px 6px 6px;">{'🚨 트리거 발동' if current_price_449 <= price_2m_10pct else '✅ 미도달'}</td>
                 </tr>
             </table>
