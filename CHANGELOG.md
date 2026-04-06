@@ -4,6 +4,8 @@
 - 449180 2달 전 대비 매수 트리거 추가 (slowly melting 방지: -5% → 50만원, -10% → 100만원)
 - 449180 x70 매수, ISA 잔액 190만→90만원
 - CLAUDE.md 및 프로젝트 문서 체계 구축 (architecture, investment-rules, api-reference)
+- 투자 철학 원문 문서화 (docs/references/investment-philosophy.md)
+- investment-rules.md에 버핏식 원칙, 계좌 구조, 체크리스트 통합
 
 ## 2026-04-06 이전 (기존 커밋 기반 정리)
 - 449180(환헤지) ISA 전환 기능 추가 (환율 1,380원 기준)

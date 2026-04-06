@@ -18,3 +18,4 @@
 @docs/architecture.md
 @docs/investment-rules.md
 @docs/api-reference.md
+@docs/references/investment-philosophy.md
