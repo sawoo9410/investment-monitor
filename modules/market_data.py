@@ -159,8 +159,9 @@ def get_kr_etf_monthly_baseline(ticker: str, retry=3, delay=2) -> Optional[Dict]
 
 def get_kr_etf_multi_period_baselines(ticker: str, retry=3, delay=2) -> Optional[Dict]:
     """한국 ETF 다기간 기준가 조회
-    
+
     - monthly: 전월 마지막 거래일 (이번 달 순수 등락률)
+    - 2month: 2개월 전 마지막 거래일 (slowly melting 감지용)
     - 3month / 6month / 1year: 해당 월의 마지막 거래일
     """
     if not FDR_AVAILABLE:
@@ -197,9 +198,9 @@ def get_kr_etf_multi_period_baselines(ticker: str, retry=3, delay=2) -> Optional
                 last_price = target_rows['Close'].iloc[-1]
                 return last_date, float(last_price)
 
-            # monthly=1: 전월 말일 기준 (이번 달 순수 등락률)
             period_defs = [
                 ('monthly', 1),
+                ('2month', 2),
                 ('3month', 3),
                 ('6month', 6),
                 ('1year', 12),

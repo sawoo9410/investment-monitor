@@ -64,7 +64,8 @@ def main():
     # 2. 주식/ETF 데이터 수집
     print("\n[2/5] 주식 데이터 수집 중...")
     stock_data = []
-    isa_trigger_data = None      # ISA 매수 트리거
+    isa_trigger_data = None      # ISA 매수 트리거 (전월 대비)
+    isa_2month_trigger_data = None  # ISA 매수 트리거 (2달 전 대비, slowly melting 방지)
     isa_sell_trigger_data = None # ISA 매도 트리거 (133690.KS)
     qcom_condition_data = None
 
@@ -123,6 +124,33 @@ def main():
                                 'action': '현금 버퍼에서 100만원 추가 매수'
                             }
                             print(f"    ⚠️  ISA 매수 트리거 접근 중 ({change_pct:.2f}%)")
+
+                    # ── ISA 2달 전 매수 트리거 (449180 전용, slowly melting 방지) ──
+                    two_month = periods.get('2month')
+                    if ticker == '449180.KS' and two_month:
+                        change_2m = two_month['change_pct']
+                        if change_2m <= -10:
+                            isa_2month_trigger_data = {
+                                'ticker': ticker,
+                                'change_pct': change_2m,
+                                'baseline_date': two_month['date'],
+                                'baseline_price': two_month['price'],
+                                'current_price': multi_data['current_price'],
+                                'trigger_level': '2달 전 대비 -10% 이상 하락',
+                                'action': '현금 버퍼에서 100만원 추가 매수'
+                            }
+                            print(f"    🚨 ISA 2달 전 트리거 발동! ({change_2m:.2f}%)")
+                        elif change_2m <= -5:
+                            isa_2month_trigger_data = {
+                                'ticker': ticker,
+                                'change_pct': change_2m,
+                                'baseline_date': two_month['date'],
+                                'baseline_price': two_month['price'],
+                                'current_price': multi_data['current_price'],
+                                'trigger_level': '2달 전 대비 -5% 이상 하락',
+                                'action': '현금 버퍼에서 50만원 추가 매수'
+                            }
+                            print(f"    ⚠️  ISA 2달 전 트리거 접근 중 ({change_2m:.2f}%)")
 
                     # ── ISA 매도 트리거 (133690.KS) ──────────────────
                     sell_trigger = stock_config.get('sell_trigger')
@@ -410,6 +438,7 @@ def main():
         'isa_active_ticker': isa_active_ticker,
         'stock_data': stock_data,
         'isa_trigger': isa_trigger_data,
+        'isa_2month_trigger': isa_2month_trigger_data,
         'isa_sell_trigger': isa_sell_trigger_data,
         'qcom_condition': qcom_condition_data,
         'cash_info': {

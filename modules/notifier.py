@@ -132,7 +132,7 @@ def _render_index_etf_table(stock_data, isa_active_ticker='360750.KS'):
 
             html += f"""
         <div style="margin-top:10px; padding:10px; background-color:#f8f9fa; border-radius:5px; font-size:13px;">
-            <strong>🎯 {isa_active_ticker} 매수 트리거 기준</strong>
+            <strong>🎯 {isa_active_ticker} 매수 트리거 기준 (전월 대비)</strong>
             <span style="color:#888; margin-left:8px;">(전월 말일 기준가: {fmt(baseline_price)} | {baseline_date})</span>
             <table style="margin-top:8px; width:auto;">
                 <tr>
@@ -152,6 +152,51 @@ def _render_index_etf_table(stock_data, isa_active_ticker='360750.KS'):
                     <td style="padding:6px 16px 6px 6px; color:{color_10};">{fmt(price_10pct)}</td>
                     <td style="padding:6px 16px 6px 6px;">현금 버퍼에서 100만원 추가 매수</td>
                     <td style="padding:6px 6px 6px 6px;">{'🚨 트리거 발동' if current_price <= price_10pct else '✅ 미도달'}</td>
+                </tr>
+            </table>
+        </div>
+"""
+
+    # ── 449180 2달 전 대비 트리거 기준가 표시 (slowly melting 방지) ────
+    hedged_449180 = next(
+        (s for s in index_stocks if s.get('price_data', {}).get('ticker') == '449180.KS'),
+        None
+    )
+    if hedged_449180:
+        multi = hedged_449180.get('multi_period_data')
+        two_month = multi.get('periods', {}).get('2month') if multi else None
+        if two_month:
+            baseline_2m_price = two_month['price']
+            baseline_2m_date  = two_month['date']
+            price_2m_5pct  = baseline_2m_price * 0.95
+            price_2m_10pct = baseline_2m_price * 0.90
+            current_price_449 = hedged_449180['price_data']['current_price']
+
+            color_2m_5  = '#6f42c1' if current_price_449 <= price_2m_5pct  else '#333'
+            color_2m_10 = '#6f42c1' if current_price_449 <= price_2m_10pct else '#333'
+
+            html += f"""
+        <div style="margin-top:10px; padding:10px; background-color:#f3f0ff; border-radius:5px; font-size:13px;">
+            <strong>🎯 449180.KS 매수 트리거 기준 (2달 전 대비, slowly melting 방지)</strong>
+            <span style="color:#888; margin-left:8px;">(2달 전 말일 기준가: ₩{baseline_2m_price:,.0f} | {baseline_2m_date})</span>
+            <table style="margin-top:8px; width:auto;">
+                <tr>
+                    <th style="padding:6px 16px 6px 6px;">구간</th>
+                    <th style="padding:6px 16px 6px 6px;">트리거 가격</th>
+                    <th style="padding:6px 16px 6px 6px;">액션</th>
+                    <th style="padding:6px 6px 6px 6px;">상태</th>
+                </tr>
+                <tr>
+                    <td style="padding:6px 16px 6px 6px; color:{color_2m_5};"><strong>-5%</strong></td>
+                    <td style="padding:6px 16px 6px 6px; color:{color_2m_5};">₩{price_2m_5pct:,.0f}</td>
+                    <td style="padding:6px 16px 6px 6px;">현금 버퍼에서 50만원 추가 매수</td>
+                    <td style="padding:6px 6px 6px 6px;">{'🚨 트리거 발동' if current_price_449 <= price_2m_5pct else '✅ 미도달'}</td>
+                </tr>
+                <tr>
+                    <td style="padding:6px 16px 6px 6px; color:{color_2m_10};"><strong>-10%</strong></td>
+                    <td style="padding:6px 16px 6px 6px; color:{color_2m_10};">₩{price_2m_10pct:,.0f}</td>
+                    <td style="padding:6px 16px 6px 6px;">현금 버퍼에서 100만원 추가 매수</td>
+                    <td style="padding:6px 6px 6px 6px;">{'🚨 트리거 발동' if current_price_449 <= price_2m_10pct else '✅ 미도달'}</td>
                 </tr>
             </table>
         </div>
@@ -342,6 +387,7 @@ def format_email_report(report_data: Dict) -> str:
     isa_active_ticker = report_data.get('isa_active_ticker', '360750.KS')
     stock_data       = report_data.get('stock_data', [])
     isa_trigger      = report_data.get("isa_trigger")
+    isa_2month_trigger = report_data.get("isa_2month_trigger")
     isa_sell_trigger = report_data.get("isa_sell_trigger")
     qcom_condition   = report_data.get('qcom_condition')
     portfolio_summary  = report_data.get('portfolio_summary', {})
@@ -396,16 +442,27 @@ def format_email_report(report_data: Dict) -> str:
     html += "</div>"
 
     # 중요 알림
-    if isa_trigger or isa_sell_trigger or qcom_condition:
+    if isa_trigger or isa_2month_trigger or isa_sell_trigger or qcom_condition:
         html += '<div class="section"><h2>🚨 중요 알림</h2>'
 
         if isa_trigger:
             html += f"""
             <div class="warning">
-                <strong>📉 ISA 매수 트리거 발동!</strong><br>
+                <strong>📉 ISA 매수 트리거 발동! (전월 대비)</strong><br>
                 {isa_trigger['ticker']}: 전월 대비 {isa_trigger['change_pct']:.2f}%<br>
                 트리거 레벨: {isa_trigger['trigger_level']}<br>
                 <strong>액션:</strong> {isa_trigger['action']}
+            </div>
+"""
+
+        if isa_2month_trigger:
+            html += f"""
+            <div class="warning" style="border-left-color:#6f42c1; background-color:#f3f0ff;">
+                <strong>📉 ISA 매수 트리거 발동! (2달 전 대비, slowly melting 방지)</strong><br>
+                {isa_2month_trigger['ticker']}: 2달 전 대비 {isa_2month_trigger['change_pct']:.2f}%<br>
+                기준일: {isa_2month_trigger['baseline_date']} (₩{isa_2month_trigger['baseline_price']:,.0f})<br>
+                트리거 레벨: {isa_2month_trigger['trigger_level']}<br>
+                <strong>액션:</strong> {isa_2month_trigger['action']}
             </div>
 """
 
