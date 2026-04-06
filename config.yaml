@@ -16,7 +16,7 @@ portfolio:
   # 현금 (수동 설정, 매달 업데이트)
   # ⚠️ 매달 1일 실제 잔액으로 업데이트할 것
   cash:
-    isa_krw: 1900000 # ISA 계좌 현금
+    isa_krw: 900000 # ISA 계좌 현금
     toss_krw: 0 # 토스증권 원화 현금
     toss_usd: 10 # 토스증권 달러 현금 (USD, 원화 환산은 자동)
 
@@ -53,7 +53,7 @@ watchlist:
   - ticker: "449180.KS"
     name: "KODEX 미국S&P500(H)"
     type: isa_core_hedged
-    holdings: 0 # 매수 시 업데이트
+    holdings: 70
     monthly_trigger: true
 
   - ticker: "133690.KS"
