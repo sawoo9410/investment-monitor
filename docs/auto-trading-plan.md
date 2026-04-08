@@ -63,7 +63,7 @@ main.py --mode report|trade|full
 
 ---
 
-## 선행 버그 수정 (세션 2에서 처리)
+## 선행 버그 수정 (별도 세션, 세션 2 이전에 처리)
 
 | # | 위치 | 문제 | 수정 |
 |---|------|------|------|
@@ -76,16 +76,9 @@ main.py --mode report|trade|full
 
 ## 세션별 구현 계획
 
-### 세션 2: 버그 수정 + 한투 API 모듈
+### 세션 2: 한투 API 모듈
 
-**Part A — 버그 수정**
-
-1. `main.py:103` — `ticker == isa_active_ticker` → `ticker == '449180.KS'`
-2. `main.py:224-238` — SPYM 급락 트리거 관련 코드 정리 (삭제됨, 참조 테이블은 유지)
-3. `main.py:395-425` — `allocations` 순회 20% 초과 경고 + speculative 5% 한도, `config.yaml`에 `individual_stock_max: 0.20`, `speculative_max: 0.05` 추가
-4. `notifier.py:112-113` — ISA 기준가 테이블 `'449180.KS'` 고정 (★ 배지는 기존 유지)
-
-**Part B — 한투 API 모듈 (`modules/trading.py`)**
+**한투 API 모듈 (`modules/trading.py`)**
 
 ```python
 class KISClient:
