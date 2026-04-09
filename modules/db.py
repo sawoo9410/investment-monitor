@@ -258,6 +258,63 @@ class InvestmentDB:
             return False
 
     # =========================================================================
+    # 환율 조회
+    # =========================================================================
+
+    def get_previous_fx(self, current_date: str) -> Optional[Dict]:
+        """current_date 이전 가장 최근 환율 조회."""
+        row = self.conn.execute(
+            """SELECT * FROM daily_fx
+               WHERE date < ?
+               ORDER BY date DESC LIMIT 1""",
+            (current_date,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    # =========================================================================
+    # 포트폴리오 조회
+    # =========================================================================
+
+    def get_portfolio_snapshot_by_date(self, date: str) -> Optional[Dict]:
+        """특정 날짜 포트폴리오 스냅샷 조회."""
+        row = self.conn.execute(
+            "SELECT * FROM portfolio_snapshot WHERE date = ?",
+            (date,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def get_nearest_snapshot(self, target_date: str, direction: str = 'before') -> Optional[Dict]:
+        """target_date 이전/이후 가장 가까운 스냅샷 조회.
+
+        direction: 'before' (이전) / 'after' (이후)
+        """
+        if direction == 'before':
+            row = self.conn.execute(
+                """SELECT * FROM portfolio_snapshot
+                   WHERE date <= ?
+                   ORDER BY date DESC LIMIT 1""",
+                (target_date,)
+            ).fetchone()
+        else:
+            row = self.conn.execute(
+                """SELECT * FROM portfolio_snapshot
+                   WHERE date >= ?
+                   ORDER BY date ASC LIMIT 1""",
+                (target_date,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def get_triggers_since(self, start_date: str) -> list:
+        """start_date 이후 발동된 트리거 목록."""
+        rows = self.conn.execute(
+            """SELECT * FROM trigger_event
+               WHERE created_at >= ?
+               ORDER BY created_at""",
+            (start_date,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    # =========================================================================
     # 연결 관리
     # =========================================================================
 

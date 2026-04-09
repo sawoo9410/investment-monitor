@@ -62,8 +62,10 @@ watchlist:
     type: isa_core
     holdings: 47
     sell_trigger:
-      rise_50pct_sell: 5 # +5% 시 50% 매도
-      rise_all_sell: 10 # +10% 시 전량 매도
+      monthly_rise_pct: 5    # 전월 대비 +5% 이상 (조건 1)
+      avg_price: 143723      # 평단가 ₩143,723
+      gain_from_avg_pct: 15  # 평단 대비 +15% 이상 (조건 2, ₩165,281)
+      sell_qty: 10           # 매도 수량 (잔여 < 10이면 전량)
 
   # ── 개별주 ────────────────────────────────
   - ticker: GOOGL

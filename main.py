@@ -1,7 +1,7 @@
 """투자 모니터링 시스템 - 메인 스크립트"""
 import os
 import yaml
-from datetime import datetime
+from datetime import datetime, date
 import pytz
 import time
 from dotenv import load_dotenv
@@ -18,10 +18,11 @@ from modules.market_data import (
     get_us_etf_multi_period_baselines,
     get_stock_fundamentals
 )
-from modules.fx_checker import check_fx_zone
+from modules.fx_checker import check_fx_zone, detect_fx_zone_change
 # from modules.ai_summary import generate_macro_summary  # 비활성화 (Perplexity 전환 예정)
 from modules.notifier import send_email, format_email_report
 from modules.db import InvestmentDB
+from modules.telegram import TelegramNotifier
 
 # 지수 ETF 타입 목록
 INDEX_TYPES = ('core', 'isa_core', 'isa_core_hedged')
@@ -55,6 +56,16 @@ def main():
     except Exception as e:
         print(f"⚠️  DB 초기화 실패 (리포트는 계속 진행): {e}")
 
+    # 텔레그램 초기화 (실패해도 리포트는 계속 진행)
+    tg = None
+    tg_token = os.getenv('TELEGRAM_BOT_TOKEN')
+    tg_chat_id = os.getenv('TELEGRAM_CHAT_ID')
+    if tg_token and tg_chat_id:
+        tg = TelegramNotifier(tg_token, tg_chat_id)
+        print("✅ 텔레그램 봇 초기화 완료")
+    else:
+        print("⚠️  텔레그램 환경변수 미설정 (알림 비활성화)")
+
     kst = pytz.timezone('Asia/Seoul')
     today = datetime.now(kst).strftime('%Y-%m-%d')
     execution_started = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
@@ -68,6 +79,16 @@ def main():
         print(f"✅ USD/KRW: {fx_rate:.2f}원")
         fx_zone_info = check_fx_zone(fx_rate, config['fx_rules'])
         print(f"   현재 구간: {fx_zone_info['zone_name']} - {fx_zone_info['action']}")
+
+        # 환율 구간 변경 감지 (DB에서 전일 환율 조회)
+        if db and tg:
+            prev_fx = db.get_previous_fx(today)
+            if prev_fx:
+                prev_zone_info = check_fx_zone(prev_fx['usd_krw'], config['fx_rules'])
+                if prev_zone_info['zone'] != fx_zone_info['zone']:
+                    tg.send_fx_zone_change(prev_zone_info['zone'], fx_zone_info['zone'], fx_rate)
+                    print(f"   💱 환율 구간 변경! {prev_zone_info['zone_name']} → {fx_zone_info['zone_name']}")
+
         # DB 환율 적재
         if db:
             db.save_daily_fx(today, fx_rate, fx_zone_info.get('zone', ''))
@@ -87,6 +108,15 @@ def main():
     isa_2month_trigger_data = None  # 449180 급락 트리거 (2달 전 대비, slowly melting 방지)
     isa_sell_trigger_data = None # 133690 매도 트리거 (ISA)
     qcom_condition_data = None
+
+    # 현재 월 (트리거 중복 방지용)
+    current_month = datetime.now(kst).strftime('%Y-%m')
+
+    # 급락 버퍼 잔액 조회
+    buffer_remaining = None
+    if db:
+        buffer_remaining = db.get_buffer_remaining('krw_crash')
+        print(f"    💰 급락 버퍼 잔액: ₩{buffer_remaining:,.0f}")
 
     for stock_config in config['watchlist']:
         ticker = stock_config['ticker']
@@ -125,86 +155,168 @@ def main():
                     # ── 449180 급락 트리거 (449180 전용, 한투 종합계좌에서 매수) ──
                     if stock_config.get('monthly_trigger') and monthly and ticker == '449180.KS':
                         change_pct = monthly['change_pct']
+                        trigger_type = None
+                        action_amount = 0
                         if change_pct <= -10:
-                            isa_trigger_data = {
-                                'ticker': ticker,
-                                'change_pct': change_pct,
-                                'baseline_date': monthly['date'],
-                                'baseline_price': monthly['price'],
-                                'current_price': multi_data['current_price'],
-                                'trigger_level': '-10% 이상 하락',
-                                'action': '현금 버퍼에서 100만원 추가 매수'
-                            }
-                            print(f"    🚨 449180 급락 트리거 발동! ({change_pct:.2f}%)")
+                            trigger_type = 'monthly_10pct'
+                            action_amount = 1000000
                         elif change_pct <= -5:
-                            isa_trigger_data = {
-                                'ticker': ticker,
-                                'change_pct': change_pct,
-                                'baseline_date': monthly['date'],
-                                'baseline_price': monthly['price'],
-                                'current_price': multi_data['current_price'],
-                                'trigger_level': '-5% 이상 하락',
-                                'action': '급락 버퍼에서 100만원 추가 매수'
-                            }
-                            print(f"    ⚠️  449180 급락 트리거 접근 중 ({change_pct:.2f}%)")
+                            trigger_type = 'monthly_5pct'
+                            action_amount = 1000000
+
+                        if trigger_type:
+                            # DB 중복 방지: 이번 달 이미 발동 여부 확인
+                            already_fired = db.is_trigger_fired(trigger_type, ticker, current_month) if db else False
+                            if already_fired:
+                                print(f"    ⏭️  449180 {trigger_type} 이번 달 이미 발동됨 (스킵)")
+                            else:
+                                # 버퍼 잔액 확인
+                                actual_amount = action_amount
+                                if buffer_remaining is not None and buffer_remaining <= 0:
+                                    print(f"    🔴 급락 버퍼 소진 — 트리거 발동하지만 매수 불가")
+                                    actual_amount = 0
+                                elif buffer_remaining is not None and buffer_remaining < action_amount:
+                                    actual_amount = buffer_remaining
+                                    print(f"    🟡 급락 버퍼 부족 — 잔액 ₩{buffer_remaining:,.0f} 전액 집행")
+
+                                isa_trigger_data = {
+                                    'ticker': ticker,
+                                    'change_pct': change_pct,
+                                    'baseline_date': monthly['date'],
+                                    'baseline_price': monthly['price'],
+                                    'current_price': multi_data['current_price'],
+                                    'trigger_level': '-10% 이상 하락' if '10' in trigger_type else '-5% 이상 하락',
+                                    'action': f'급락 버퍼에서 ₩{actual_amount:,.0f} 매수',
+                                    'buffer_remaining': buffer_remaining,
+                                }
+                                print(f"    🚨 449180 급락 트리거 발동! ({change_pct:.2f}%)")
+
+                                # DB 기록 + 버퍼 차감
+                                if db:
+                                    db.record_trigger(trigger_type, ticker, current_month,
+                                                      baseline_date=monthly['date'],
+                                                      baseline_price=monthly['price'],
+                                                      current_price=multi_data['current_price'],
+                                                      change_pct=change_pct,
+                                                      action_amount=actual_amount)
+                                    if actual_amount > 0:
+                                        deducted = db.deduct_buffer('krw_crash', actual_amount)
+                                        buffer_remaining = db.get_buffer_remaining('krw_crash')
+                                        print(f"    💰 버퍼 차감: ₩{deducted:,.0f} → 잔액 ₩{buffer_remaining:,.0f}")
+
+                                if tg:
+                                    tg.send_trigger_alert(trigger_type, isa_trigger_data)
+                                    if buffer_remaining is not None:
+                                        tg.send_buffer_warning(buffer_remaining)
 
                     # ── 449180 2달 전 급락 트리거 (slowly melting 방지) ──
                     two_month = periods.get('2month')
                     if ticker == '449180.KS' and two_month:
                         change_2m = two_month['change_pct']
+                        trigger_type_2m = None
+                        action_amount_2m = 0
                         if change_2m <= -10:
-                            isa_2month_trigger_data = {
-                                'ticker': ticker,
-                                'change_pct': change_2m,
-                                'baseline_date': two_month['date'],
-                                'baseline_price': two_month['price'],
-                                'current_price': multi_data['current_price'],
-                                'trigger_level': '2달 전 대비 -10% 이상 하락',
-                                'action': '급락 버퍼에서 50만원 추가 매수'
-                            }
-                            print(f"    🚨 449180 2달 전 트리거 발동! ({change_2m:.2f}%)")
+                            trigger_type_2m = '2month_10pct'
+                            action_amount_2m = 500000
                         elif change_2m <= -5:
-                            isa_2month_trigger_data = {
-                                'ticker': ticker,
-                                'change_pct': change_2m,
-                                'baseline_date': two_month['date'],
-                                'baseline_price': two_month['price'],
-                                'current_price': multi_data['current_price'],
-                                'trigger_level': '2달 전 대비 -5% 이상 하락',
-                                'action': '급락 버퍼에서 50만원 추가 매수'
-                            }
-                            print(f"    ⚠️  449180 2달 전 트리거 접근 중 ({change_2m:.2f}%)")
+                            trigger_type_2m = '2month_5pct'
+                            action_amount_2m = 500000
 
-                    # ── 133690 매도 트리거 ──────────────────
+                        if trigger_type_2m:
+                            already_fired_2m = db.is_trigger_fired(trigger_type_2m, ticker, current_month) if db else False
+                            if already_fired_2m:
+                                print(f"    ⏭️  449180 {trigger_type_2m} 이번 달 이미 발동됨 (스킵)")
+                            else:
+                                actual_amount_2m = action_amount_2m
+                                if buffer_remaining is not None and buffer_remaining <= 0:
+                                    print(f"    🔴 급락 버퍼 소진 — 2달 전 트리거 발동하지만 매수 불가")
+                                    actual_amount_2m = 0
+                                elif buffer_remaining is not None and buffer_remaining < action_amount_2m:
+                                    actual_amount_2m = buffer_remaining
+
+                                isa_2month_trigger_data = {
+                                    'ticker': ticker,
+                                    'change_pct': change_2m,
+                                    'baseline_date': two_month['date'],
+                                    'baseline_price': two_month['price'],
+                                    'current_price': multi_data['current_price'],
+                                    'trigger_level': '2달 전 대비 -10% 이상 하락' if '10' in trigger_type_2m else '2달 전 대비 -5% 이상 하락',
+                                    'action': f'급락 버퍼에서 ₩{actual_amount_2m:,.0f} 매수',
+                                    'buffer_remaining': buffer_remaining,
+                                }
+                                print(f"    🚨 449180 2달 전 트리거 발동! ({change_2m:.2f}%)")
+
+                                if db:
+                                    db.record_trigger(trigger_type_2m, ticker, current_month,
+                                                      baseline_date=two_month['date'],
+                                                      baseline_price=two_month['price'],
+                                                      current_price=multi_data['current_price'],
+                                                      change_pct=change_2m,
+                                                      action_amount=actual_amount_2m)
+                                    if actual_amount_2m > 0:
+                                        deducted = db.deduct_buffer('krw_crash', actual_amount_2m)
+                                        buffer_remaining = db.get_buffer_remaining('krw_crash')
+                                        print(f"    💰 버퍼 차감: ₩{deducted:,.0f} → 잔액 ₩{buffer_remaining:,.0f}")
+
+                                if tg:
+                                    tg.send_trigger_alert(trigger_type_2m, isa_2month_trigger_data)
+                                    if buffer_remaining is not None:
+                                        tg.send_buffer_warning(buffer_remaining)
+
+                    # ── 133690 매도 트리거 (두 조건 모두 충족 필요) ──
                     sell_trigger = stock_config.get('sell_trigger')
                     if sell_trigger and monthly:
                         change_pct = monthly['change_pct']
-                        rise_all  = sell_trigger.get('rise_all_sell', 10)
-                        rise_half = sell_trigger.get('rise_50pct_sell', 5)
+                        monthly_rise_pct = sell_trigger.get('monthly_rise_pct', 5)
+                        avg_price = sell_trigger.get('avg_price', 0)
+                        gain_from_avg_pct = sell_trigger.get('gain_from_avg_pct', 15)
+                        sell_qty_config = sell_trigger.get('sell_qty', 10)
 
-                        if change_pct >= rise_all:
-                            isa_sell_trigger_data = {
-                                'ticker': ticker,
-                                'change_pct': change_pct,
-                                'baseline_date': monthly['date'],
-                                'baseline_price': monthly['price'],
-                                'current_price': multi_data['current_price'],
-                                'trigger_level': f'+{rise_all}% 이상 상승',
-                                'action': f'전량 매도 ({stock_config.get("holdings", 0)}주)'
-                            }
-                            print(f"    🚨 ISA 매도 트리거 발동! 전량 ({change_pct:.2f}%)")
-                        elif change_pct >= rise_half:
-                            holdings = stock_config.get('holdings', 0)
-                            isa_sell_trigger_data = {
-                                'ticker': ticker,
-                                'change_pct': change_pct,
-                                'baseline_date': monthly['date'],
-                                'baseline_price': monthly['price'],
-                                'current_price': multi_data['current_price'],
-                                'trigger_level': f'+{rise_half}% 이상 상승',
-                                'action': f'50% 매도 ({holdings // 2}주)'
-                            }
-                            print(f"    ⚠️  ISA 매도 트리거 접근 중 50% ({change_pct:.2f}%)")
+                        current_price_133 = multi_data['current_price']
+                        gain_from_avg = ((current_price_133 - avg_price) / avg_price * 100) if avg_price > 0 else 0
+                        cond_monthly = change_pct >= monthly_rise_pct
+                        cond_avg = gain_from_avg >= gain_from_avg_pct
+
+                        if cond_monthly and cond_avg:
+                            sell_trigger_type = '133690_sell'
+                            already_sold = db.is_trigger_fired(sell_trigger_type, ticker, current_month) if db else False
+                            if already_sold:
+                                print(f"    ⏭️  133690 매도 트리거 이번 달 이미 발동됨 (스킵)")
+                            else:
+                                holdings = stock_config.get('holdings', 0)
+                                sell_qty = min(sell_qty_config, holdings)
+                                remaining = max(0, holdings - sell_qty)
+                                isa_sell_trigger_data = {
+                                    'ticker': ticker,
+                                    'change_pct': change_pct,
+                                    'baseline_date': monthly['date'],
+                                    'baseline_price': monthly['price'],
+                                    'current_price': current_price_133,
+                                    'avg_price': avg_price,
+                                    'gain_from_avg_pct': gain_from_avg,
+                                    'sell_qty': sell_qty,
+                                    'action': f'{sell_qty}주 매도 (잔여 {remaining}주)'
+                                }
+                                print(f"    📈 133690 매도 조건 충족! (전월 {change_pct:+.2f}%, 평단 대비 {gain_from_avg:+.1f}%)")
+
+                                if db:
+                                    db.record_trigger(sell_trigger_type, ticker, current_month,
+                                                      baseline_date=monthly['date'],
+                                                      baseline_price=monthly['price'],
+                                                      current_price=current_price_133,
+                                                      change_pct=change_pct,
+                                                      action_amount=0)
+
+                                if tg:
+                                    tg.send_133690_sell_alert(isa_sell_trigger_data, remaining_qty=remaining)
+                        else:
+                            reasons = []
+                            if not cond_monthly:
+                                reasons.append(f"전월 {change_pct:+.2f}% < +{monthly_rise_pct}%")
+                            if not cond_avg:
+                                reasons.append(f"평단 대비 {gain_from_avg:+.1f}% < +{gain_from_avg_pct}%")
+                            if reasons:
+                                print(f"    ⏸️  133690 매도 조건 미충족: {', '.join(reasons)}")
 
                     # 기간별 수익률 로그
                     m  = periods.get('monthly')
@@ -223,6 +335,12 @@ def main():
 
             stock_data.append(stock_info)
             print(f"    ✅ {ticker}: ₩{price_data['current_price']:,} ({price_data['change_pct']:+.2f}%)")
+
+            # 보유 종목 일간 ±5% 알림
+            if tg and stock_config.get('holdings', 0) > 0 and abs(price_data['change_pct']) >= 5.0:
+                tg.send_price_alert(ticker, stock_config.get('name', ticker),
+                                    price_data['change_pct'], price_data['current_price'], is_krw=True)
+
             time.sleep(1)
 
         # ── 미국 주식 ────────────────────────────────────────────
@@ -304,15 +422,28 @@ def main():
                         drop_ok  = drop_from_high <= -drop_min
 
                         if per_ok and drop_ok:
-                            qcom_condition_data = {
-                                'ticker': ticker,
-                                'per': per,
-                                'drop_pct': drop_from_high,
-                                'high_52week': fundamentals['high_52week'],
-                                'current_price': fundamentals['current_price'],
-                                'action': f'매수 적기 - PER {per:.1f} (기준 {per_max} 이하), 52주 고점 대비 {drop_from_high:.1f}% (기준 {drop_min}% 이상 하락)'
-                            }
-                            print(f"    🎯 {ticker} 매수 조건 충족!")
+                            # DB 중복 방지
+                            qcom_trigger_type = 'qcom_buy'
+                            already_alerted = db.is_trigger_fired(qcom_trigger_type, ticker, current_month) if db else False
+                            if already_alerted:
+                                print(f"    ⏭️  {ticker} 매수 조건 이번 달 이미 안내됨 (스킵)")
+                            else:
+                                qcom_condition_data = {
+                                    'ticker': ticker,
+                                    'per': per,
+                                    'drop_pct': drop_from_high,
+                                    'high_52week': fundamentals['high_52week'],
+                                    'current_price': fundamentals['current_price'],
+                                    'action': f'매수 적기 - PER {per:.1f} (기준 {per_max} 이하), 52주 고점 대비 {drop_from_high:.1f}% (기준 {drop_min}% 이상 하락)'
+                                }
+                                print(f"    🎯 {ticker} 매수 조건 충족!")
+
+                                if db:
+                                    db.record_trigger(qcom_trigger_type, ticker, current_month,
+                                                      current_price=fundamentals['current_price'],
+                                                      change_pct=drop_from_high)
+                                if tg:
+                                    tg.send_qcom_alert(qcom_condition_data)
                         else:
                             reason = []
                             if not per_ok:
@@ -325,6 +456,12 @@ def main():
 
             stock_data.append(stock_info)
             print(f"    ✅ {ticker}: ${price_data['current_price']} ({price_data['change_pct']:+.2f}%)")
+
+            # 보유 종목 일간 ±5% 알림
+            if tg and stock_config.get('holdings', 0) > 0 and abs(price_data['change_pct']) >= 5.0:
+                tg.send_price_alert(ticker, stock_config.get('name', ticker),
+                                    price_data['change_pct'], price_data['current_price'], is_krw=False)
+
             time.sleep(2)
 
     # 3. holdings_only 종목 가격 조회
@@ -365,8 +502,10 @@ def main():
     print(f"    💰 토스 달러:  ${toss_usd:,.0f} (₩{toss_usd_krw:,.0f})")
     print(f"    💰 현금 합계:  ₩{total_cash:,.0f}")
 
-    # 총 평가액 계산
+    # 총 평가액 계산 (국내/미국 분리)
     total_value       = 0
+    kr_value          = 0
+    us_value          = 0
     sector_values     = {}
     individual_values = {}
 
@@ -377,8 +516,10 @@ def main():
 
         if ticker.endswith('.KS') or ticker.endswith('.KRX'):
             value_krw = holdings * price
+            kr_value += value_krw
         else:
             value_krw = holdings * price * (fx_rate or 1)
+            us_value += value_krw
 
         total_value += value_krw
         individual_values[ticker] = {
@@ -418,6 +559,7 @@ def main():
     }
 
     print(f"    ✅ 총 자산: ₩{total_assets:,.0f} (평가액 ₩{total_value:,.0f} + 현금 ₩{total_cash:,.0f})")
+    print(f"    📊 국내: ₩{kr_value:,.0f} | 미국: ₩{us_value:,.0f} (환산)")
     print(f"    📊 현금 비중: {cash_allocation_pct:.1f}%")
 
     # 5. 포트폴리오 한도 체크
@@ -515,11 +657,14 @@ def main():
             'total_assets': total_assets,
             'total_value': total_value,
             'total_cash': total_cash,
+            'kr_value': kr_value,
+            'us_value': us_value,
             'allocations': allocations,
             'sector_allocations': sector_allocations,
             'cash_allocation_pct': cash_allocation_pct
         },
         'portfolio_warnings': limit_warnings,
+        'buffer_remaining': buffer_remaining,
         'macro_summary': macro_summary
     }
 
@@ -534,6 +679,60 @@ def main():
     )
 
     print("    ✅ 이메일 발송 완료" if email_sent else "    ❌ 이메일 발송 실패")
+
+    # ── 텔레그램 알림 ──────────────────────────────────────────────────
+    if tg:
+        print("\n텔레그램 알림 발송 중...")
+
+        # 포트폴리오 한도 경고
+        if limit_warnings:
+            tg.send_portfolio_warning(limit_warnings)
+            print("    ✅ 포트폴리오 경고 발송")
+
+        # 국내 종가 리포트 (금요일이면 주간 요약 포함)
+        today_date = datetime.now(kst)
+        is_friday = today_date.weekday() == 4
+        weekly_data = None
+        if is_friday and db:
+            from datetime import timedelta
+            monday = (today_date - timedelta(days=today_date.weekday())).strftime('%Y-%m-%d')
+            mon_snapshot = db.get_nearest_snapshot(monday, direction='after')
+            if mon_snapshot and mon_snapshot.get('total_assets'):
+                week_change = total_assets - mon_snapshot['total_assets']
+                week_change_pct = (week_change / mon_snapshot['total_assets']) * 100
+                week_triggers = db.get_triggers_since(monday)
+                weekly_data = {
+                    'total_change': week_change,
+                    'total_change_pct': week_change_pct,
+                    'triggers_fired': [t['trigger_type'] for t in week_triggers]
+                }
+                print(f"    📅 주간 요약: {week_change:+,.0f}원 ({week_change_pct:+.1f}%)")
+        tg.send_kr_market_close(report_data, weekly_data=weekly_data)
+        print("    ✅ 국내 종가 리포트 발송")
+
+        # 미국 종가 리포트
+        tg.send_us_market_close(report_data)
+        print("    ✅ 미국 종가 리포트 발송")
+
+        # 정기 리마인더 (매달 1일 / 15일)
+        day = today_date.day
+        if day == 1:
+            tg.send_monthly_checklist('first', fx_rate or 0, isa_active_ticker)
+            print("    ✅ 월초 체크리스트 발송")
+        elif day == 15:
+            tg.send_monthly_checklist('mid', fx_rate or 0, isa_active_ticker)
+            print("    ✅ 월중 비중점검 리마인더 발송")
+
+        # ISA 만기 카운트다운 (D-90, D-30, D-7)
+        days_to_isa = (date(2027, 8, 9) - today_date.date()).days
+        if days_to_isa in (90, 30, 7):
+            tg.send_isa_countdown(days_to_isa)
+            print(f"    ✅ ISA 만기 D-{days_to_isa} 알림 발송")
+
+        # 이메일 실패 시 에러 알림
+        if not email_sent:
+            tg.send_error_alert("이메일 발송 실패 — Gmail SMTP 확인 필요")
+
     print("\n=== 리포트 생성 완료 ===")
 
     if api_limit_exceeded:
@@ -563,4 +762,20 @@ def main():
         print("✅ DB 기록 완료")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(f"\n❌ 예기치 않은 오류: {e}")
+        # 텔레그램으로 에러 알림 시도
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+            token = os.getenv('TELEGRAM_BOT_TOKEN')
+            chat_id = os.getenv('TELEGRAM_CHAT_ID')
+            if token and chat_id:
+                TelegramNotifier(token, chat_id).send_error_alert(
+                    f"main.py 실행 중 크래시:\n{type(e).__name__}: {e}"
+                )
+        except Exception:
+            pass
+        raise

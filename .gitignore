@@ -1,7 +1,11 @@
 invest-env/
+.venv/
+.claude/
+*.pdf
 __pycache__/
 *.pyc
 .DS_Store
 *.log
 .env
 data/
+logs/

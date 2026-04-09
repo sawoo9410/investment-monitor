@@ -1,7 +1,7 @@
 # 자동매매 전환 구현 계획
 
 > 작성일: 2026-04-08 | 브랜치: feature/auto-trading
-> 최종 수정: 2026-04-09 (세션 2 완료 — SQLite DB + .env 환경 구축)
+> 최종 수정: 2026-04-09 (세션 4 완료 — 아키텍처 재설계: 지정가 예약 주문 방식)
 
 ## Context
 
@@ -27,55 +27,89 @@
 
 ## 아키텍처
 
-```
-로컬 실행 (Windows 작업 스케줄러 or WSL cron)
-  ├─ 07:00 KST: 데이터 수집 + DB 적재 + 이메일 리포트
-  ├─ 15:15 KST: 국내 매매 실행 (장 마감 15분 전, 종가 근접 체결)
-  ├─ 15:45 KST: 국내 종가 리포트 + 체결 결과 텔레그램
-  ├─ 05:45 KST: 미국 매매 실행 (미장 마감 15분 전, 종가 근접 체결)
-  └─ 06:15 KST: 미국 종가 리포트 + 체결 결과 텔레그램
+### 핵심 전략: 지정가 예약 주문 (Limit Order)
 
-main.py --mode report|trade_kr|trade_us|telegram_kr|telegram_us|full
+> **변경 이유**: 기존 "장 마감 15분 전 실시간 체크 → 매수" 방식은 장중에 트리거 가격을
+> 찍고 반등하면 놓침. 트리거 가격을 미리 계산하여 지정가 주문을 제출하면,
+> 거래소가 장중 체결을 처리하므로 폴링/모니터링 불필요.
+
+```
+[기존 방식 — 폐기]
+15:15 실시간 가격 조회 → -5% 확인 → 매수 실행
+문제: 10:30에 -5% 찍고 15:15에 반등하면 놓침
+
+[신규 방식 — 지정가 예약]
+08:50 장 시작 전
+  ├─ 전월/2달 전 baseline으로 트리거 가격 계산
+  │    449180 전월 종가 ₩14,000 기준:
+  │      -5%  → ₩13,300에 75주 매수 (≈₩100만)
+  │     -10%  → ₩12,600에 79주 매수 (≈₩100만)
+  ├─ 한투 API로 지정가 매수 주문 제출
+  └─ 2달 전 트리거도 별도 주문 (₩50만씩)
+
+09:00~15:30 장중
+  └─ 거래소가 가격 도달 시 자동 체결 (우리 시스템은 아무것도 안 함)
+
+15:35 장 마감 후
+  ├─ 체결 여부 확인 (한투 API 주문 조회)
+  ├─ 미체결 주문 취소
+  ├─ DB 기록 (trigger_event, order_history, trigger_buffer 차감)
+  └─ 텔레그램 리포트 (체결 결과 포함)
+```
+
+**장점:**
+- 장중 폴링/모니터링 불필요 — 시스템 리소스 최소화
+- 장중 어느 시점에든 트리거 가격 도달하면 체결
+- 스케줄이 단순: 장 전 1회 + 장 후 1회
+
+**확인 필요:**
+- 한투 API 지정가/예약주문 지원 여부 및 제약
+- 당일 미체결 자동 취소(IOC/FOK) vs 수동 취소 필요 여부
+- 해외주식(SPYM)도 동일 방식 가능한지
+
+### 모듈 구조
+
+```
+main.py --mode report|order_kr|settle_kr|order_us|settle_us|full
   ├─ market_data.py      (기존, 데이터 수집)
   ├─ fx_checker.py        (기존, 환율 구간)
   ├─ notifier.py          (기존, 이메일)
-  ├─ db.py                (신규, SQLite 연동)
-  ├─ telegram.py          (신규, 텔레그램 알림)
+  ├─ db.py                (기존, SQLite 연동)
+  ├─ telegram.py          (기존, 텔레그램 알림)
   ├─ trading.py           (신규, 한투 API 클라이언트) ← 한투 개설 후
-  └─ trade_executor.py    (신규, 트리거→주문 실행)   ← 한투 개설 후
+  └─ trade_executor.py    (신규, 주문 제출/정산)     ← 한투 개설 후
           │
      로컬 SQLite (data/investment.db)
 ```
 
-## 스케줄 설계
+### 스케줄 설계 (재설계)
 
 ```
-국내:  15:15 매매 실행 → 15:30 장 마감 → 15:45 텔레그램 리포트
-미국:  05:45 매매 실행 → 06:00 장 마감 → 06:15 텔레그램 리포트
+국내:  08:50 주문 제출 → 09:00~15:30 거래소 체결 → 15:35 정산+리포트
+미국:  22:20 주문 제출 → 22:30~05:00 거래소 체결 → 05:05 정산+리포트
 ```
 
 | 시간 | 모드 | 내용 |
 |------|------|------|
-| 07:00 | `--mode report` | 데이터 수집 + DB 적재 + 이메일 상세 리포트 |
-| 15:15 | `--mode trade_kr` | 국내 실시간 데이터 → 트리거 판정 → 449180 매매 (한투 후) |
-| 15:45 | `--mode telegram_kr` | 국내 종가 리포트 + 체결 결과 텔레그램 |
-| 05:45 | `--mode trade_us` | 미국 실시간 데이터 → 트리거 판정 → SPYM 매매 (한투 후) |
-| 06:15 | `--mode telegram_us` | 미국 종가 리포트 + 체결 결과 텔레그램 |
-| 즉시 | - | 트리거/에러 긴급 텔레그램 알림 |
+| 07:00 | `--mode report` | 데이터 수집 + DB 적재 + 이메일 리포트 |
+| 08:50 | `--mode order_kr` | 트리거 가격 계산 → 449180 지정가 주문 제출 |
+| 15:35 | `--mode settle_kr` | 체결 확인 + 미체결 취소 + DB 기록 + 텔레그램 |
+| 22:20 | `--mode order_us` | SPYM 주문 제출 (환전 포함) |
+| 05:05 | `--mode settle_us` | 체결 확인 + 미체결 취소 + DB 기록 + 텔레그램 |
 
 ## 자동매매 범위
 
-| 항목 | 자동매매 | 시간 | 방식 | 단계 |
-|------|:--------:|------|------|:----:|
-| 449180 급락 트리거 | O | 15:15 | 한투 API (국내주식) | 한투 후 |
-| SPYM 정기매수 | O | 05:45 | 한투 API (해외주식) | 한투 후 |
-| 환전 (원화→달러) | O | 05:45 | 한투 API (외화매매) | 한투 후 |
-| 449180 트리거 안내 | O | 15:45 | 텔레그램 | **지금** |
-| 133690 매도 안내 | O | 15:45 | 텔레그램 | **지금** |
-| QCOM 조건부 매수 안내 | O | 06:15 | 텔레그램 | **지금** |
-| 포트폴리오 경고 | O | 15:45 | 텔레그램 | **지금** |
-| ISA 정기매수 | X | - | 수동 (신한 앱) | - |
-| 개별주 매매 | X | - | 모니터링만 | - |
+| 항목 | 자동매매 | 방식 | 단계 |
+|------|:--------:|------|:----:|
+| 449180 급락 트리거 | O | 지정가 예약 주문 (한투 국내주식) | 한투 후 |
+| SPYM 정기매수 | O | 한투 API (해외주식) | 한투 후 |
+| 환전 (원화→달러) | O | 한투 API (외화매매) | 한투 후 |
+| 449180 트리거 안내 | O | 텔레그램 | **지금** |
+| 133690 매도 안내 | O | 텔레그램 | **지금** |
+| QCOM 조건부 매수 안내 | O | 텔레그램 | **지금** |
+| 포트폴리오 경고 | O | 텔레그램 | **지금** |
+| ISA 정기매수 | X | 수동 (신한 앱) | - |
+| 개별주 매매 | X | 모니터링만 | - |
 
 ---
 
@@ -109,7 +143,7 @@ main.py --mode report|trade_kr|trade_us|telegram_kr|telegram_us|full
 
 ---
 
-### 세션 3: 텔레그램 알림 모듈
+### 세션 3: 텔레그램 알림 모듈 (완료 ✅)
 
 **한투 API 불필요. 텔레그램 봇 토큰만 필요.**
 
@@ -232,15 +266,15 @@ class TelegramNotifier:
     def send_buffer_warning(self, remaining, threshold=1000000) -> bool
 
     # 보유 종목 급변
-    def send_price_alert(self, ticker, change_pct, threshold=5.0) -> bool
+    def send_price_alert(self, ticker, name, change_pct, current_price, is_krw=True) -> bool
 
     # 정기 리마인더
-    def send_monthly_checklist(self, day_of_month, fx_rate, isa_ticker) -> bool
+    def send_monthly_checklist(self, day_type, fx_rate, isa_ticker) -> bool
     def send_isa_countdown(self, days_remaining) -> bool
 
-    # 주간/일일 요약
-    def send_weekly_summary(self, weekly_data) -> bool
-    def send_daily_summary(self, report_data) -> bool
+    # 종가 리포트 (국내 15:45 / 미국 06:15)
+    def send_kr_market_close(self, report_data, weekly_data=None) -> bool
+    def send_us_market_close(self, report_data) -> bool
 
     # 시스템
     def send_error_alert(self, error_msg) -> bool
@@ -253,7 +287,7 @@ class TelegramNotifier:
 
 ---
 
-### 세션 4: 트리거→텔레그램 연동 + DB 기반 중복 방지
+### 세션 4: 트리거→텔레그램 연동 + DB 기반 중복 방지 (완료 ✅)
 
 **한투 API 불필요. 세션 2, 3 완료 후 진행.**
 
@@ -292,163 +326,21 @@ TIGER 미국나스닥100 (133690.KS)
 
 ---
 
-### 세션 5: 한투 API 모듈 (계좌 개설 후)
+### 세션 5~8: 재설계 필요 ⚠️
 
-**한투 계좌 + API 키 필요.**
+> 아키텍처가 "실시간 체크 → 매수"에서 "지정가 예약 주문"으로 변경됨.
+> 한투 API 주문 방식(지정가/예약/IOC 등) 확인 후 세션 5~8 재설계 필요.
 
-**생성:** `modules/trading.py`
+**변경 포인트:**
+- `trade_executor.py`: 실시간 판정+즉시 주문 → 트리거 가격 계산+지정가 주문 제출
+- `--mode`: `trade_kr/trade_us` → `order_kr/settle_kr/order_us/settle_us`
+- 스케줄: 장 전 주문 제출 + 장 후 정산 (기존: 장 마감 15분 전 매매)
+- `trading.py`: 지정가 주문 제출, 주문 조회, 미체결 취소 API 추가
+- DB: `order_history`에 주문 상태 추적 (submitted → filled/cancelled)
 
-```python
-class KISClient:
-    def __init__(self, app_key, app_secret, account_no, is_paper=True)
-    def get_access_token(self, retry=3, delay=2) -> Optional[str]
-    def get_us_stock_price(self, ticker, exchange='NAS') -> Optional[Dict]
-    def get_kr_stock_price(self, ticker) -> Optional[Dict]
-    def get_us_stock_balance(self) -> Optional[Dict]
-    def buy_us_stock(self, ticker, quantity, price, exchange, order_type) -> Optional[Dict]
-    def sell_us_stock(self, ticker, quantity, price, exchange, order_type) -> Optional[Dict]
-    def buy_kr_stock(self, ticker, quantity, price, order_type) -> Optional[Dict]
-    def exchange_currency(self, from_currency, to_currency, amount) -> Optional[Dict]
-
-def calculate_buy_quantity(budget, current_price, max_quantity=100) -> int
-def is_us_market_open() -> bool
-def is_kr_market_open() -> bool
-```
-
-- 시세 조회를 한투로 전환 (FinanceDataReader/Alpha Vantage → 한투 API)
-- Alpha Vantage는 펀더멘탈(PER/ROE) 전용으로 유지
-- `.env`에 `KIS_APP_KEY`, `KIS_APP_SECRET`, `KIS_ACCOUNT_NO` 추가
-
-**config.yaml 추가:**
-```yaml
-kis_api:
-  is_paper: true
-
-trading:
-  enabled: false
-  dry_run: true
-  max_single_order_usd: 500
-  max_single_order_krw: 1500000
-  max_daily_orders: 5
-
-exchange_map:
-  SPYM: NAS
-  GOOGL: NAS
-  OXY: NYS
-  QCOM: NAS
-```
-
-**수정:** `main.py`, `modules/market_data.py`, `config.yaml`, `requirements.txt`
-**생성:** `modules/trading.py`
-
----
-
-### 세션 6: 자동매수 로직 + trade executor
-
-**한투 API 필요. 세션 5 완료 후.**
-
-**생성:** `modules/trade_executor.py`
-
-```python
-class TradeExecutor:
-    def __init__(self, kis_client, telegram, db, config)
-    def _safety_check(self, order_amount, currency='KRW') -> tuple[bool, str]
-    def execute_449180_trigger(self, trigger_data) -> Optional[Dict]
-    def execute_spym_regular_buy(self, fx_zone, monthly_budget) -> Optional[Dict]
-    def execute_fx_conversion(self, fx_zone, amount) -> Optional[Dict]
-    def get_execution_summary(self) -> Dict
-```
-
-안전장치: enabled → dry_run → 금액 한도 → 일일 건수(DB) → 시장 개장 → 버퍼 잔액(DB) → 월별 중복(DB)
-
-**main.py `--mode` 인자:**
-- `report`: 데이터 수집 + DB 적재 + 이메일 + 텔레그램
-- `trade`: 트리거 재판정 + 주문 실행
-- `full`: report + trade
-
-텔레그램 안내 메시지를 주문 결과 알림으로 전환:
-- 한투 개설 전: "한투 앱에서 직접 매수하세요"
-- 한투 개설 후: "✅ 449180 75주 매수 완료 (₩990,000)"
-
----
-
-### 세션 7: 모의투자 테스트 + dry-run
-
-**생성:**
-- `tests/test_db.py`
-- `tests/test_trading.py`
-- `tests/test_integration.py`
-- `tests/test_telegram.py`
-
-**`--force-trigger` 지원:**
-```bash
-python main.py --mode trade --force-trigger 449180_5pct
-```
-
-**dry-run**: DB에 `is_dry_run=True`로 기록, 텔레그램에 `[DRY-RUN]` 접두어
-
----
-
-### 세션 8: 실전 전환 + 로컬 스케줄러
-
-**config 전환:**
-```yaml
-kis_api:
-  is_paper: false
-trading:
-  enabled: true
-  dry_run: false
-```
-
-**로컬 스케줄러:**
-```
-07:00 KST → python main.py --mode report
-23:40 KST → python main.py --mode trade
-```
-
-**Kill switch:**
-- 1차: `trading.enabled: false`
-- 2차: `.env`에서 `KIS_APP_KEY` 제거
-
----
-
-## 최종 파일 구조
-
-```
-investment-monitor/                    ← git repo
-├── main.py                            # --mode report|trade|full
-├── config.yaml                        # 매매 안전장치 (민감 정보 제외)
-├── .env.example                       # 환경변수 템플릿 (git 포함)
-├── .env                               # 실제 환경변수 (git 제외)
-├── .gitignore
-├── requirements.txt
-├── scripts/
-│   └── init_db.sql                    # DB 테이블 생성
-├── modules/
-│   ├── market_data.py                 # 기존 (→ 한투 전환 후 수정)
-│   ├── fx_checker.py                  # 기존
-│   ├── notifier.py                    # 기존 (버그 수정 완료)
-│   ├── db.py                          # 신규: PostgreSQL (세션 2)
-│   ├── telegram.py                    # 신규: 텔레그램 (세션 3)
-│   ├── trading.py                     # 신규: 한투 API (세션 5)
-│   └── trade_executor.py             # 신규: 매매 실행 (세션 6)
-├── tests/
-│   ├── test_db.py
-│   ├── test_trading.py
-│   ├── test_integration.py
-│   └── test_telegram.py
-└── docs/
-    ├── auto-trading-plan.md
-    ├── db-schema.md
-    └── ...
-```
-
-## 검증 방법
-
-1. **세션 2**: DB 연결 + 테이블 생성 + 기존 파이프라인에서 DB 적재 확인
-2. **세션 3**: 텔레그램 봇 생성 + 메시지 발송 테스트
-3. **세션 4**: 트리거 발동 → DB 기록 + 텔레그램 발송 + 중복 방지 확인
-4. **세션 5**: 한투 토큰 발급 + 시세 조회 테스트
-5. **세션 6**: `--mode trade` + `dry_run: true` → DB 기록 + 텔레그램 시뮬
-6. **세션 7**: 한투 모의투자 + `--force-trigger` → 모의 주문 체결
-7. **세션 8**: 로컬 스케줄러 + 소액 실전 주문
+**확인 필요 (한투 계좌 개설 후):**
+- 한투 API 지정가/예약주문 API 스펙
+- 장 전 주문 제출 가능 시간
+- 당일 미체결 자동 취소 여부
+- 해외주식 지정가 주문 동일 방식 가능 여부
+- 모의투자 환경에서 지정가 주문 테스트 가능 여부
