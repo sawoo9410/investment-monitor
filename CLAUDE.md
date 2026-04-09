@@ -20,4 +20,5 @@
 @docs/investment-rules.md
 @docs/api-reference.md
 @docs/auto-trading-plan.md
+@docs/db-schema.md
 @docs/references/investment-philosophy.md
