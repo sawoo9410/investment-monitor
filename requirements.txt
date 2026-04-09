@@ -8,3 +8,4 @@ pandas>=1.0.0,<3.0.0
 beautifulsoup4==4.12.3
 lxml==5.1.0
 finance-datareader==0.9.50
+python-dotenv==1.0.1

@@ -4,6 +4,9 @@ import yaml
 from datetime import datetime
 import pytz
 import time
+from dotenv import load_dotenv
+
+load_dotenv()  # .env 파일이 있으면 로드, 없으면 무시 (GitHub Actions 호환)
 
 from modules.market_data import (
     get_fx_rate,
@@ -18,6 +21,7 @@ from modules.market_data import (
 from modules.fx_checker import check_fx_zone
 # from modules.ai_summary import generate_macro_summary  # 비활성화 (Perplexity 전환 예정)
 from modules.notifier import send_email, format_email_report
+from modules.db import InvestmentDB
 
 # 지수 ETF 타입 목록
 INDEX_TYPES = ('core', 'isa_core', 'isa_core_hedged')
@@ -43,6 +47,18 @@ def main():
         print("❌ 필수 환경변수가 설정되지 않았습니다.")
         return
 
+    # DB 초기화 (실패해도 리포트는 계속 진행)
+    db = None
+    try:
+        db = InvestmentDB()
+        print("✅ DB 연결 완료")
+    except Exception as e:
+        print(f"⚠️  DB 초기화 실패 (리포트는 계속 진행): {e}")
+
+    kst = pytz.timezone('Asia/Seoul')
+    today = datetime.now(kst).strftime('%Y-%m-%d')
+    execution_started = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+
     api_limit_exceeded = False
 
     # 1. 환율 조회
@@ -52,6 +68,9 @@ def main():
         print(f"✅ USD/KRW: {fx_rate:.2f}원")
         fx_zone_info = check_fx_zone(fx_rate, config['fx_rules'])
         print(f"   현재 구간: {fx_zone_info['zone_name']} - {fx_zone_info['action']}")
+        # DB 환율 적재
+        if db:
+            db.save_daily_fx(today, fx_rate, fx_zone_info.get('zone', ''))
     else:
         print("❌ 환율 조회 실패")
         fx_zone_info = None
@@ -82,6 +101,10 @@ def main():
             if not price_data:
                 print(f"    ❌ {ticker} 가격 조회 실패")
                 continue
+
+            # DB 가격 적재
+            if db:
+                db.save_daily_price(today, ticker, price_data)
 
             stock_info = {
                 'ticker': ticker,
@@ -211,6 +234,10 @@ def main():
                 api_limit_exceeded = True
                 print(f"    ❌ {ticker} 가격 조회 실패")
                 continue
+
+            # DB 가격 적재
+            if db:
+                db.save_daily_price(today, ticker, price_data)
 
             stock_info = {
                 'ticker': ticker,
@@ -446,6 +473,19 @@ def main():
     else:
         print(f"    ✅ 현금: {cash_allocation_pct:.1f}% (목표 범위 {cash_min*100:.0f}~{cash_max*100:.0f}% 이내)")
 
+    # DB 포트폴리오 스냅샷 적재
+    if db:
+        db.save_portfolio_snapshot({
+            'date': today,
+            'total_assets': total_assets,
+            'total_value': total_value,
+            'total_cash': total_cash,
+            'cash_allocation_pct': cash_allocation_pct,
+            'holdings': allocations,
+            'sectors': sector_allocations,
+            'warnings': limit_warnings
+        })
+
     # ── AI 거시경제 요약 비활성화 (Perplexity 전환 예정) ──────────────
     macro_summary = None
     # ───────────────────────────────────────────────────────────────────
@@ -508,7 +548,19 @@ def main():
             print(f"\n📊 오늘 Alpha Vantage API 사용량: {AV_API_CALLS}/{AV_DAILY_LIMIT} ({usage_pct:.1f}%)")
             print(f"   남은 호출 수: {AV_DAILY_LIMIT - AV_API_CALLS}회")
     except ImportError:
-        pass
+        AV_API_CALLS = 0
+
+    # DB 실행 로그 기록 및 연결 종료
+    if db:
+        db.log_execution(
+            mode='report',
+            status='success' if email_sent else 'partial',
+            summary=f"종목 {len(stock_data)}개 수집, 이메일 {'성공' if email_sent else '실패'}",
+            started_at=execution_started,
+            api_calls_av=AV_API_CALLS
+        )
+        db.close()
+        print("✅ DB 기록 완료")
 
 if __name__ == "__main__":
     main()

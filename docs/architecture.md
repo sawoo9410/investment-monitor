@@ -15,8 +15,12 @@ investment-monitor/
 │   ├── market_data.py       # 시장 데이터 수집 (Alpha Vantage + FinanceDataReader)
 │   ├── fx_checker.py        # 환율 구간 판정 및 변경 감지
 │   ├── notifier.py          # HTML 이메일 리포트 생성 및 Gmail SMTP 발송
+│   ├── db.py                # SQLite DB 연동 (가격/환율/트리거/포트폴리오 적재)
 │   ├── ai_summary.py        # AI 거시경제 요약 (Claude API + 웹검색, 비활성화 상태)
 │   └── perplexity_summary.py # Perplexity Sonar 요약 (미구현, TODO)
+├── scripts/
+│   └── init_db.sql          # SQLite 테이블 생성 DDL
+├── data/                    # SQLite DB 파일 (gitignored)
 ├── docs/                    # 프로젝트 문서
 └── .github/workflows/
     └── daily_report.yml     # 평일 자동 실행 (cron: UTC 22:00 = KST 07:00)
@@ -69,6 +73,12 @@ investment-monitor/
 - 지수 ETF 테이블 하단에 매수 트리거 기준가 표시 (ISA 활성 종목 + SPYM)
 - Gmail SMTP SSL (포트 465) 사용
 
+### db.py
+- SQLite 기반 데이터 저장소 (`data/investment.db`)
+- `InvestmentDB` 클래스: 가격/환율/트리거/버퍼/주문/포트폴리오/DCA/실행로그
+- DB 실패 시 리포트 파이프라인 차단하지 않음 (optional)
+- `scripts/init_db.sql`을 읽어 테이블 자동 생성 (`IF NOT EXISTS`)
+
 ### ai_summary.py (비활성화)
 - Claude API + 웹검색으로 거시경제 요약 생성
 - 주요 지수, 투자자 심리(VIX, Fear & Greed), 종목별 뉴스, 이벤트 캘린더 포함
@@ -80,6 +90,9 @@ investment-monitor/
 ExchangeRate API  ─┐
 FinanceDataReader ─┤─→ main.py ─→ notifier.py ─→ Gmail SMTP ─→ 이메일
 Alpha Vantage     ─┘      │
-                    config.yaml
-                    (종목/전략/현금)
+                    config.yaml    │
+                    (종목/전략/현금)│
+                                   ↓
+                           data/investment.db (SQLite)
+                           (가격/환율/포트폴리오/실행로그)
 ```

@@ -1,7 +1,7 @@
 # 자동매매 전환 구현 계획
 
 > 작성일: 2026-04-08 | 브랜치: feature/auto-trading
-> 최종 수정: 2026-04-09 (세션 우선순위 재편 — 한투 API 독립적인 작업 우선)
+> 최종 수정: 2026-04-09 (세션 2 완료 — SQLite DB + .env 환경 구축)
 
 ## Context
 
@@ -74,62 +74,19 @@ main.py --mode report|trade|full
 
 ## 세션별 구현 계획
 
-### 세션 2: 로컬 환경 + PostgreSQL + DB 모듈
+### 세션 2: 로컬 환경 + SQLite + DB 모듈 (완료 ✅)
 
-**한투 API 불필요. 지금 바로 가능.**
+**PostgreSQL → SQLite 변경**: 크로스 플랫폼(Windows/Mac), 설치 불필요, 데이터량 충분.
+향후 서버 이전 시 PostgreSQL로 마이그레이션 가능.
 
-**Part A — 로컬 실행 환경**
-- `.env` 파일 생성 (DB URL, 텔레그램 토큰, 기존 API 키)
-- `.env.example` 생성 (템플릿, git 포함)
-- `.gitignore`에 `.env` 추가
-- `python-dotenv` 의존성 추가
-- main.py에서 `.env` 로드
-
-**Part B — PostgreSQL 연동**
-- 로컬 PostgreSQL 설치 + DB 생성
-- `scripts/init_db.sql` — 테이블 생성 스크립트 (docs/db-schema.md 기준)
-- `modules/db.py` — DB 연동 모듈
-
-```python
-class InvestmentDB:
-    def __init__(self, db_url)
-    # 가격
-    def save_daily_price(self, date, ticker, price_data) -> bool
-    def get_price(self, ticker, date) -> Optional[Dict]
-    def get_month_end_price(self, ticker, year, month) -> Optional[Dict]
-    # 환율
-    def save_daily_fx(self, date, usd_krw, fx_zone) -> bool
-    # 트리거
-    def record_trigger(self, trigger_type, ticker, month, ...) -> bool
-    def is_trigger_fired(self, trigger_type, ticker, month) -> bool
-    # 버퍼
-    def get_buffer_remaining(self, buffer_type) -> int
-    def deduct_buffer(self, buffer_type, amount) -> int
-    # 주문
-    def record_order(self, order_data) -> bool
-    def get_daily_orders_count(self, date) -> int
-    # 포트폴리오
-    def save_portfolio_snapshot(self, snapshot) -> bool
-    # DCA
-    def record_dca(self, dca_data) -> bool
-    # 실행 로그
-    def log_execution(self, mode, status, summary) -> bool
-```
-
-- `psycopg2-binary` 의존성 추가
-- 연결 풀링 (간단한 수준, 단일 프로세스이므로)
-
-**Part C — 기존 데이터 → DB 적재 연동**
-- main.py 파이프라인에 DB 적재 삽입:
-  - 환율 조회 후 → `save_daily_fx()`
-  - 종목 가격 조회 후 → `save_daily_price()`
-  - 포트폴리오 계산 후 → `save_portfolio_snapshot()`
-  - 실행 완료 시 → `log_execution()`
-- 기존 데이터 소스 유지 (FinanceDataReader + Alpha Vantage)
-- 한투 API 연동 시 소스만 교체하면 됨
+- `.env` + `python-dotenv`로 로컬 환경변수 관리 (GitHub Actions 호환)
+- `modules/db.py` — `InvestmentDB` 클래스 (SQLite, 테이블 8개)
+- `scripts/init_db.sql` — SQLite DDL
+- `main.py` 파이프라인에 DB 적재 삽입 (환율/가격/포트폴리오/실행로그)
+- DB는 optional — 초기화 실패해도 기존 리포트 정상 동작
 
 **수정:** `main.py`, `requirements.txt`, `.gitignore`
-**생성:** `modules/db.py`, `scripts/init_db.sql`, `.env.example`, `.env`
+**생성:** `modules/db.py`, `scripts/init_db.sql`, `.env.example`
 
 ---
 
