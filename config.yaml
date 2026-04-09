@@ -24,16 +24,17 @@ portfolio:
   limits:
     ai_tech_sector_max: 0.20 # 20%
     oxy_max: 0.10 # 10%
+    individual_stock_max: 0.20 # 개별 종목 최대 20%
+    speculative_max: 0.05 # 베팅/speculative 최대 5%
     cash_min: 0.15 # 15%
     cash_max: 0.25 # 25%
 
-  # 섹터 분류
+  # 섹터 분류 (speculative 제외)
   sectors:
     ai_tech:
       - GOOGL
       - QCOM
       - NVDA
-      - SOUN
 
 # 추적 종목 (daily tracking + 이메일 표시)
 watchlist:
@@ -89,8 +90,7 @@ watchlist:
 
   - ticker: SOUN
     name: "SoundHound AI"
-    type: growth
-    sector: ai_tech
+    type: speculative
     holdings: 3
 
   - ticker: NVDA

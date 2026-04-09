@@ -64,9 +64,9 @@ def main():
     # 2. 주식/ETF 데이터 수집
     print("\n[2/5] 주식 데이터 수집 중...")
     stock_data = []
-    isa_trigger_data = None      # ISA 매수 트리거 (전월 대비)
-    isa_2month_trigger_data = None  # ISA 매수 트리거 (2달 전 대비, slowly melting 방지)
-    isa_sell_trigger_data = None # ISA 매도 트리거 (133690.KS)
+    isa_trigger_data = None      # 449180 급락 트리거 (전월 대비, 한투 종합계좌)
+    isa_2month_trigger_data = None  # 449180 급락 트리거 (2달 전 대비, slowly melting 방지)
+    isa_sell_trigger_data = None # 133690 매도 트리거 (ISA)
     qcom_condition_data = None
 
     for stock_config in config['watchlist']:
@@ -99,8 +99,8 @@ def main():
                     periods = multi_data.get('periods', {})
                     monthly = periods.get('monthly')
 
-                    # ── ISA 매수 트리거 (활성 종목에만 적용) ──────────
-                    if stock_config.get('monthly_trigger') and monthly and ticker == isa_active_ticker:
+                    # ── 449180 급락 트리거 (449180 전용, 한투 종합계좌에서 매수) ──
+                    if stock_config.get('monthly_trigger') and monthly and ticker == '449180.KS':
                         change_pct = monthly['change_pct']
                         if change_pct <= -10:
                             isa_trigger_data = {
@@ -112,7 +112,7 @@ def main():
                                 'trigger_level': '-10% 이상 하락',
                                 'action': '현금 버퍼에서 100만원 추가 매수'
                             }
-                            print(f"    🚨 ISA 매수 트리거 발동! ({change_pct:.2f}%)")
+                            print(f"    🚨 449180 급락 트리거 발동! ({change_pct:.2f}%)")
                         elif change_pct <= -5:
                             isa_trigger_data = {
                                 'ticker': ticker,
@@ -121,11 +121,11 @@ def main():
                                 'baseline_price': monthly['price'],
                                 'current_price': multi_data['current_price'],
                                 'trigger_level': '-5% 이상 하락',
-                                'action': '현금 버퍼에서 100만원 추가 매수'
+                                'action': '급락 버퍼에서 100만원 추가 매수'
                             }
-                            print(f"    ⚠️  ISA 매수 트리거 접근 중 ({change_pct:.2f}%)")
+                            print(f"    ⚠️  449180 급락 트리거 접근 중 ({change_pct:.2f}%)")
 
-                    # ── ISA 2달 전 매수 트리거 (449180 전용, slowly melting 방지) ──
+                    # ── 449180 2달 전 급락 트리거 (slowly melting 방지) ──
                     two_month = periods.get('2month')
                     if ticker == '449180.KS' and two_month:
                         change_2m = two_month['change_pct']
@@ -137,9 +137,9 @@ def main():
                                 'baseline_price': two_month['price'],
                                 'current_price': multi_data['current_price'],
                                 'trigger_level': '2달 전 대비 -10% 이상 하락',
-                                'action': '현금 버퍼에서 50만원 추가 매수'
+                                'action': '급락 버퍼에서 50만원 추가 매수'
                             }
-                            print(f"    🚨 ISA 2달 전 트리거 발동! ({change_2m:.2f}%)")
+                            print(f"    🚨 449180 2달 전 트리거 발동! ({change_2m:.2f}%)")
                         elif change_2m <= -5:
                             isa_2month_trigger_data = {
                                 'ticker': ticker,
@@ -148,11 +148,11 @@ def main():
                                 'baseline_price': two_month['price'],
                                 'current_price': multi_data['current_price'],
                                 'trigger_level': '2달 전 대비 -5% 이상 하락',
-                                'action': '현금 버퍼에서 50만원 추가 매수'
+                                'action': '급락 버퍼에서 50만원 추가 매수'
                             }
-                            print(f"    ⚠️  ISA 2달 전 트리거 접근 중 ({change_2m:.2f}%)")
+                            print(f"    ⚠️  449180 2달 전 트리거 접근 중 ({change_2m:.2f}%)")
 
-                    # ── ISA 매도 트리거 (133690.KS) ──────────────────
+                    # ── 133690 매도 트리거 ──────────────────
                     sell_trigger = stock_config.get('sell_trigger')
                     if sell_trigger and monthly:
                         change_pct = monthly['change_pct']
@@ -358,7 +358,8 @@ def main():
             'value': value_krw,
             'holdings': holdings,
             'price': price,
-            'name': stock_info.get('name', ticker)
+            'name': stock_info.get('name', ticker),
+            'type': stock_info.get('type', '')
         }
 
         sector = stock_info.get('sector')
@@ -412,6 +413,27 @@ def main():
         print(f"    ⚠️  OXY 한도 초과: {oxy_pct:.1f}%")
     else:
         print(f"    ✅ OXY: {oxy_pct:.1f}% (한도 {oxy_max*100:.0f}% 이내)")
+
+    # ── 개별 종목 비중 한도 체크 ──────────────────────────────────
+    individual_max = limits.get('individual_stock_max', 0.20)
+    for ticker, alloc_data in allocations.items():
+        pct = alloc_data.get('allocation_pct', 0)
+        if pct > individual_max * 100:
+            limit_warnings.append({'type': 'individual', 'message': f"{ticker} {pct:.1f}% (한도 {individual_max*100:.0f}% 초과)"})
+            print(f"    ⚠️  {ticker} 한도 초과: {pct:.1f}%")
+
+    # ── speculative 종목 비중 한도 체크 ──────────────────────────
+    speculative_max = limits.get('speculative_max', 0.05)
+    speculative_pct = sum(
+        alloc_data.get('allocation_pct', 0)
+        for alloc_data in allocations.values()
+        if alloc_data.get('type') == 'speculative'
+    )
+    if speculative_pct > speculative_max * 100:
+        limit_warnings.append({'type': 'speculative', 'message': f"베팅/speculative {speculative_pct:.1f}% (한도 {speculative_max*100:.0f}% 초과)"})
+        print(f"    ⚠️  베팅/speculative 한도 초과: {speculative_pct:.1f}%")
+    else:
+        print(f"    ✅ 베팅/speculative: {speculative_pct:.1f}% (한도 {speculative_max*100:.0f}% 이내)")
 
     cash_min = limits.get('cash_min', 0.15)
     cash_max = limits.get('cash_max', 0.25)
