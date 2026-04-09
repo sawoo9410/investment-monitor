@@ -94,22 +94,97 @@ main.py --mode report|trade|full
 
 **한투 API 불필요. 텔레그램 봇 토큰만 필요.**
 
+#### 알림 역할 분담
+
+| | 이메일 (07:00 종합 리포트) | 텔레그램 (즉시/스케줄) |
+|--|:-:|:-:|
+| 일일 종합 리포트 | O | X |
+| 트리거 발동 | O (리포트 내) | O (즉시) |
+| 환율 구간 변경 | X | O |
+| 매달 체크리스트 | X | O (1일, 중순) |
+| 급락 버퍼 잔액 경고 | X | O |
+| 보유 종목 일간 ±5% | X | O |
+| 시스템 에러 | X | O |
+| ISA 만기 카운트다운 | X | O (D-90, D-30, D-7) |
+| 주간 요약 (금요일) | X | O |
+| 133690 매도 후 잔여 추적 | X | O |
+
+#### 알림 상세
+
+**트리거 알림 (즉시):**
+- 449180 급락 트리거 (전월 -5%/-10%, 2달 전 -5%/-10%)
+- 133690 매도 조건 충족 (전월+5% AND 평단+15%) + 잔여 수량 표시
+- QCOM 조건부 매수 (PER ≤ 25 AND 52주 -15%)
+- 포트폴리오 한도 초과 (개별 20%, AI·테크 20%, speculative 5%, 현금 15-25%)
+
+**환율 알림:**
+- 환율 구간 변경 시 알림 (ISA 활성 종목 전환 필요: 449180↔360750)
+
+**급락 버퍼:**
+- 잔액 100만원 이하 시 충전 안내
+- 트리거 집행 후 잔액 상태 알림
+
+**보유 종목 급변:**
+- 하루 ±5% 이상 변동 시 알림 (정보 제공만, 액션 안내 없음 — 감정 매매 방지)
+
+**정기 리마인더:**
+- 매달 1일: "ISA 100만 정기매수 확인 / config.yaml 업데이트 / 환율 구간 확인"
+- 매달 중순: "비중 점검 (개별 20%, AI·테크 20%, 현금 15-25%)"
+- ISA 만기 카운트다운: D-90 (2027-05-11), D-30 (2027-07-10), D-7 (2027-08-02)
+
+**주간 요약 (금요일):**
+- 이번 주 총자산 변화 (₩ / %)
+- 주요 비중 변화
+- 트리거 상태 요약
+
+**시스템:**
+- API 실패 (Alpha Vantage 한도 초과, FinanceDataReader 에러 등)
+- DB 에러
+- 실행 실패
+
+**주문 결과 (한투 연동 후):**
+- 자동매수 체결 결과
+- dry-run 시뮬레이션 결과
+
 **생성:** `modules/telegram.py`
 
 ```python
 class TelegramNotifier:
     def __init__(self, bot_token, chat_id)
+
+    # 기본 발송
     def send_message(self, text, parse_mode='HTML', retry=3) -> bool
+
+    # 트리거 알림
     def send_trigger_alert(self, trigger_type, trigger_data) -> bool
     def send_isa_action_required(self, trigger_data) -> bool
-    def send_133690_sell_alert(self, trigger_data) -> bool
-    def send_daily_summary(self, report_data) -> bool
-    def send_error_alert(self, error_msg) -> bool
+    def send_133690_sell_alert(self, trigger_data, remaining_qty) -> bool
+    def send_qcom_alert(self, condition_data) -> bool
     def send_portfolio_warning(self, warnings) -> bool
+
+    # 환율/버퍼
+    def send_fx_zone_change(self, prev_zone, new_zone, fx_rate) -> bool
+    def send_buffer_warning(self, remaining, threshold=1000000) -> bool
+
+    # 보유 종목 급변
+    def send_price_alert(self, ticker, change_pct, threshold=5.0) -> bool
+
+    # 정기 리마인더
+    def send_monthly_checklist(self, day_of_month, fx_rate, isa_ticker) -> bool
+    def send_isa_countdown(self, days_remaining) -> bool
+
+    # 주간/일일 요약
+    def send_weekly_summary(self, weekly_data) -> bool
+    def send_daily_summary(self, report_data) -> bool
+
+    # 시스템
+    def send_error_alert(self, error_msg) -> bool
+
+    # 주문 결과 (한투 연동 후)
     def send_order_notification(self, order_result, is_dry_run=False) -> bool
 ```
 
-**수정:** `main.py`
+**수정:** `main.py` (텔레그램 초기화 + 각 이벤트 후 알림 호출)
 
 ---
 
