@@ -99,8 +99,8 @@ def main():
                     periods = multi_data.get('periods', {})
                     monthly = periods.get('monthly')
 
-                    # ── ISA 매수 트리거 (활성 종목에만 적용) ──────────
-                    if stock_config.get('monthly_trigger') and monthly and ticker == isa_active_ticker:
+                    # ── ISA 매수 트리거 (449180 전용) ──────────
+                    if stock_config.get('monthly_trigger') and monthly and ticker == '449180.KS':
                         change_pct = monthly['change_pct']
                         if change_pct <= -10:
                             isa_trigger_data = {
@@ -358,7 +358,8 @@ def main():
             'value': value_krw,
             'holdings': holdings,
             'price': price,
-            'name': stock_info.get('name', ticker)
+            'name': stock_info.get('name', ticker),
+            'type': stock_info.get('type', '')
         }
 
         sector = stock_info.get('sector')
@@ -412,6 +413,27 @@ def main():
         print(f"    ⚠️  OXY 한도 초과: {oxy_pct:.1f}%")
     else:
         print(f"    ✅ OXY: {oxy_pct:.1f}% (한도 {oxy_max*100:.0f}% 이내)")
+
+    # ── 개별 종목 비중 한도 체크 ──────────────────────────────────
+    individual_max = limits.get('individual_stock_max', 0.20)
+    for ticker, alloc_data in allocations.items():
+        pct = alloc_data.get('allocation_pct', 0)
+        if pct > individual_max * 100:
+            limit_warnings.append({'type': 'individual', 'message': f"{ticker} {pct:.1f}% (한도 {individual_max*100:.0f}% 초과)"})
+            print(f"    ⚠️  {ticker} 한도 초과: {pct:.1f}%")
+
+    # ── speculative 종목 비중 한도 체크 ──────────────────────────
+    speculative_max = limits.get('speculative_max', 0.05)
+    speculative_pct = sum(
+        alloc_data.get('allocation_pct', 0)
+        for alloc_data in allocations.values()
+        if alloc_data.get('type') == 'speculative'
+    )
+    if speculative_pct > speculative_max * 100:
+        limit_warnings.append({'type': 'speculative', 'message': f"베팅/speculative {speculative_pct:.1f}% (한도 {speculative_max*100:.0f}% 초과)"})
+        print(f"    ⚠️  베팅/speculative 한도 초과: {speculative_pct:.1f}%")
+    else:
+        print(f"    ✅ 베팅/speculative: {speculative_pct:.1f}% (한도 {speculative_max*100:.0f}% 이내)")
 
     cash_min = limits.get('cash_min', 0.15)
     cash_max = limits.get('cash_max', 0.25)

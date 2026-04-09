@@ -108,31 +108,29 @@ def _render_index_etf_table(stock_data, isa_active_ticker='360750.KS'):
 
     html += "</table>"
 
-    # ── ISA 활성 종목 매수 트리거 기준가 표시 ─────────────────────────
-    isa_core = next(
-        (s for s in index_stocks if s.get('price_data', {}).get('ticker') == isa_active_ticker),
+    # ── 449180 매수 트리거 기준가 표시 (449180 전용) ─────────────────
+    trigger_449180 = next(
+        (s for s in index_stocks if s.get('price_data', {}).get('ticker') == '449180.KS'),
         None
     )
-    if isa_core:
-        multi = isa_core.get('multi_period_data')
+    if trigger_449180:
+        multi = trigger_449180.get('multi_period_data')
         monthly = multi.get('periods', {}).get('monthly') if multi else None
         if monthly:
             baseline_price = monthly['price']
             baseline_date  = monthly['date']
             price_5pct  = baseline_price * 0.95
             price_10pct = baseline_price * 0.90
-            current_price = isa_core['price_data']['current_price']
+            current_price = trigger_449180['price_data']['current_price']
 
             color_5  = '#dc3545' if current_price <= price_5pct  else '#333'
             color_10 = '#dc3545' if current_price <= price_10pct else '#333'
 
-            # 원화/달러 표시 구분
-            is_kr = isa_active_ticker.endswith('.KS')
-            fmt = lambda p: f"₩{p:,.0f}" if is_kr else f"${p:.2f}"
+            fmt = lambda p: f"₩{p:,.0f}"
 
             html += f"""
         <div style="margin-top:10px; padding:10px; background-color:#f8f9fa; border-radius:5px; font-size:13px;">
-            <strong>🎯 {isa_active_ticker} 매수 트리거 기준 (전월 대비)</strong>
+            <strong>🎯 449180.KS 매수 트리거 기준 (전월 대비)</strong>
             <span style="color:#888; margin-left:8px;">(전월 말일 기준가: {fmt(baseline_price)} | {baseline_date})</span>
             <table style="margin-top:8px; width:auto;">
                 <tr>
@@ -197,51 +195,6 @@ def _render_index_etf_table(stock_data, isa_active_ticker='360750.KS'):
                     <td style="padding:6px 16px 6px 6px; color:{color_2m_10};">₩{price_2m_10pct:,.0f}</td>
                     <td style="padding:6px 16px 6px 6px;">현금 버퍼에서 50만원 추가 매수</td>
                     <td style="padding:6px 6px 6px 6px;">{'🚨 트리거 발동' if current_price_449 <= price_2m_10pct else '✅ 미도달'}</td>
-                </tr>
-            </table>
-        </div>
-"""
-
-    # ── SPYM 매수 트리거 기준가 표시 ──────────────────────────────
-    spym = next(
-        (s for s in index_stocks if s.get('price_data', {}).get('ticker') == 'SPYM'),
-        None
-    )
-    if spym:
-        multi = spym.get('multi_period_data')
-        monthly = multi.get('periods', {}).get('monthly') if multi else None
-        if monthly:
-            baseline_price = monthly['price']
-            baseline_date  = monthly['date']
-            price_5pct  = baseline_price * 0.95
-            price_10pct = baseline_price * 0.90
-            current_price = spym['price_data']['current_price']
-
-            color_5  = '#dc3545' if current_price <= price_5pct  else '#333'
-            color_10 = '#dc3545' if current_price <= price_10pct else '#333'
-
-            html += f"""
-        <div style="margin-top:10px; padding:10px; background-color:#f8f9fa; border-radius:5px; font-size:13px;">
-            <strong>🎯 SPYM 매수 트리거 기준</strong>
-            <span style="color:#888; margin-left:8px;">(전월 말일 기준가: ${baseline_price:.2f} | {baseline_date})</span>
-            <table style="margin-top:8px; width:auto;">
-                <tr>
-                    <th style="padding:6px 16px 6px 6px;">구간</th>
-                    <th style="padding:6px 16px 6px 6px;">트리거 가격</th>
-                    <th style="padding:6px 16px 6px 6px;">액션</th>
-                    <th style="padding:6px 6px 6px 6px;">상태</th>
-                </tr>
-                <tr>
-                    <td style="padding:6px 16px 6px 6px; color:{color_5};"><strong>-5%</strong></td>
-                    <td style="padding:6px 16px 6px 6px; color:{color_5};">${price_5pct:.2f}</td>
-                    <td style="padding:6px 16px 6px 6px;">달러 버퍼 30% 집행</td>
-                    <td style="padding:6px 6px 6px 6px;">{'🚨 트리거 발동' if current_price <= price_5pct else '✅ 미도달'}</td>
-                </tr>
-                <tr>
-                    <td style="padding:6px 16px 6px 6px; color:{color_10};"><strong>-10%</strong></td>
-                    <td style="padding:6px 16px 6px 6px; color:{color_10};">${price_10pct:.2f}</td>
-                    <td style="padding:6px 16px 6px 6px;">달러 버퍼 추가 집행</td>
-                    <td style="padding:6px 6px 6px 6px;">{'🚨 트리거 발동' if current_price <= price_10pct else '✅ 미도달'}</td>
                 </tr>
             </table>
         </div>
