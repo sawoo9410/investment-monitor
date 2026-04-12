@@ -287,10 +287,12 @@ def main():
 
     email_html = format_email_report(report_data)
 
+    recipients = config.get('email_report', {}).get('recipients', [gmail_address])
+
     email_sent = send_email(
         gmail_address,
         gmail_app_password,
-        gmail_address,
+        recipients,
         "📊 투자 모니터링 데일리 리포트",
         email_html
     )

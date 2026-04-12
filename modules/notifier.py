@@ -2,26 +2,29 @@
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from typing import Dict
+from typing import Dict, List, Union
 
 # 지수 ETF 타입 목록 (이 type은 다기간 수익률 테이블로 표시)
 INDEX_TYPES = ('core', 'isa_core', 'isa_core_hedged')
 
-def send_email(from_addr: str, password: str, to_addr: str, subject: str, html_content: str) -> bool:
-    """Gmail SMTP를 통한 HTML 이메일 발송"""
+def send_email(from_addr: str, password: str, to_addrs: Union[str, List[str]], subject: str, html_content: str) -> bool:
+    """Gmail SMTP를 통한 HTML 이메일 발송 (복수 수신자 지원)"""
+    if isinstance(to_addrs, str):
+        to_addrs = [to_addrs]
+
     try:
         msg = MIMEMultipart('alternative')
         msg['Subject'] = subject
         msg['From'] = from_addr
-        msg['To'] = to_addr
+        msg['To'] = ', '.join(to_addrs)
 
         html_part = MIMEText(html_content, 'html', 'utf-8')
         msg.attach(html_part)
 
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
             server.login(from_addr, password)
-            server.sendmail(from_addr, to_addr, msg.as_string())
-            print(f"이메일 발송 성공: {to_addr}")
+            server.sendmail(from_addr, to_addrs, msg.as_string())
+            print(f"이메일 발송 성공: {', '.join(to_addrs)}")
             return True
     except Exception as e:
         print(f"이메일 발송 실패: {e}")

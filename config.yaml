@@ -86,7 +86,9 @@ macro_keywords:
 # 이메일 리포트 설정
 email_report:
   enabled: true
-  recipient: "sawoo9410@gmail.com"
+  recipients:
+    - "sawoo9410@gmail.com"
+    - "a40195949@gmail.com"
   schedule: "0 7 * * *"
 
 # 텔레그램 알림 설정
