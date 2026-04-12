@@ -76,12 +76,6 @@ TIGER 미국나스닥100 (133690.KS) — 점진적 포지션 정리 목적.
 - 나스닥100 전월 +5% 이상은 연 3~5회 발생
 - 예상 정리 기간: 약 1~1.5년
 
-## QCOM 조건부 매수
-
-두 조건 모두 충족 시 매수 신호:
-- PER <= 25
-- 52주 고점 대비 15% 이상 하락
-
 ## 포트폴리오 비중 한도
 
 | 항목 | 한도 |
@@ -106,13 +100,13 @@ TIGER 미국나스닥100 (133690.KS) — 점진적 포지션 정리 목적.
 | 449180.KS | KODEX 미국S&P500(H) | 70 | ISA 코어 (환헤지) |
 | 133690.KS | TIGER 미국나스닥100 | 47 | ISA (매도 트리거 적용) |
 
-### 개별주
+### 개별주 (추가 매수 없음, 트래킹만)
 | 종목 | 이름 | 수량 | 타입 | 모트 |
 |------|------|------|------|------|
 | GOOGL | Alphabet A | 4 | growth | 검색·광고·클라우드 |
 | OXY | Occidental Petroleum | 4 | satellite | 버크셔 보유, 에너지 |
-| QCOM | Qualcomm | 4 | conditional | 5G 특허 기반 |
-| SOUN | SoundHound AI | 3 | **speculative** | AI 음성인식 (소형주, 추가매수 안함) |
+| QCOM | Qualcomm | 4 | individual | 5G 특허 기반 |
+| SOUN | SoundHound AI | 3 | **speculative** | AI 음성인식 (소형주) |
 | NVDA | NVIDIA | 0 | watchonly | GPU 독점 |
 
 ## 현금 관리

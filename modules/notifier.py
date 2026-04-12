@@ -340,7 +340,6 @@ def format_email_report(report_data: Dict) -> str:
     isa_trigger      = report_data.get("isa_trigger")
     isa_2month_trigger = report_data.get("isa_2month_trigger")
     isa_sell_trigger = report_data.get("isa_sell_trigger")
-    qcom_condition   = report_data.get('qcom_condition')
     portfolio_summary  = report_data.get('portfolio_summary', {})
     portfolio_warnings = report_data.get('portfolio_warnings', [])
     macro_summary    = report_data.get('macro_summary', '')
@@ -373,7 +372,7 @@ def format_email_report(report_data: Dict) -> str:
 """
 
     # 중요 알림
-    if isa_trigger or isa_2month_trigger or isa_sell_trigger or qcom_condition:
+    if isa_trigger or isa_2month_trigger or isa_sell_trigger:
         html += '<div class="section"><h2>🚨 중요 알림</h2>'
 
         if isa_trigger:
@@ -404,16 +403,6 @@ def format_email_report(report_data: Dict) -> str:
                 {isa_sell_trigger['ticker']}: 전월 대비 {isa_sell_trigger['change_pct']:.2f}%<br>
                 트리거 레벨: {isa_sell_trigger['trigger_level']}<br>
                 <strong>액션:</strong> {isa_sell_trigger['action']}
-            </div>
-"""
-
-        if qcom_condition:
-            html += f"""
-            <div class="success">
-                <strong>QCOM 매수 조건 충족!</strong><br>
-                PER: {qcom_condition['per']:.1f}<br>
-                52주 고점 대비: {qcom_condition['drop_pct']:.1f}%<br>
-                <strong>액션:</strong> {qcom_condition['action']}
             </div>
 """
 

@@ -67,7 +67,6 @@ def main():
     isa_trigger_data = None      # ISA 매수 트리거 (전월 대비)
     isa_2month_trigger_data = None  # ISA 매수 트리거 (2달 전 대비, slowly melting 방지)
     isa_sell_trigger_data = None # ISA 매도 트리거 (133690.KS)
-    qcom_condition_data = None
 
     for stock_config in config['watchlist']:
         ticker = stock_config['ticker']
@@ -267,32 +266,6 @@ def main():
                     de_str  = f"{float(debt_equity):.2f}" if debt_equity and debt_equity != 'None' else "N/A"
                     pm_str  = f"{float(profit_margin)*100:.1f}%" if profit_margin and profit_margin != 'None' else "N/A"
                     print(f"    📈 PER: {per_str} | ROE: {roe_str} | D/E: {de_str} | Margin: {pm_str} | 52주 고점 대비: {drop_from_high:+.1f}%")
-
-                    # QCOM 매수 조건 체크
-                    if stock_config['type'] == 'conditional':
-                        buy_condition = stock_config.get('buy_condition', {})
-                        per_max  = buy_condition.get('per_max', 25)
-                        drop_min = buy_condition.get('drop_pct_min', 15)
-                        per_ok   = per is not None and per <= per_max
-                        drop_ok  = drop_from_high <= -drop_min
-
-                        if per_ok and drop_ok:
-                            qcom_condition_data = {
-                                'ticker': ticker,
-                                'per': per,
-                                'drop_pct': drop_from_high,
-                                'high_52week': fundamentals['high_52week'],
-                                'current_price': fundamentals['current_price'],
-                                'action': f'매수 적기 - PER {per:.1f} (기준 {per_max} 이하), 52주 고점 대비 {drop_from_high:.1f}% (기준 {drop_min}% 이상 하락)'
-                            }
-                            print(f"    🎯 {ticker} 매수 조건 충족!")
-                        else:
-                            reason = []
-                            if not per_ok:
-                                reason.append(f"PER {per:.1f} > {per_max}" if per else "PER 없음")
-                            if not drop_ok:
-                                reason.append(f"하락폭 {drop_from_high:.1f}% < {drop_min}%")
-                            print(f"    ⏸️  {ticker} 매수 조건 미충족: {', '.join(reason)}")
                 else:
                     api_limit_exceeded = True
 
@@ -462,7 +435,6 @@ def main():
         'isa_trigger': isa_trigger_data,
         'isa_2month_trigger': isa_2month_trigger_data,
         'isa_sell_trigger': isa_sell_trigger_data,
-        'qcom_condition': qcom_condition_data,
         'cash_info': {
             'isa_krw': isa_krw,
             'toss_krw': toss_krw,

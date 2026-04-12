@@ -81,12 +81,9 @@ watchlist:
 
   - ticker: QCOM
     name: "Qualcomm"
-    type: conditional
+    type: individual
     sector: ai_tech
     holdings: 4
-    buy_condition:
-      per_max: 25
-      drop_pct_min: 15
 
   - ticker: SOUN
     name: "SoundHound AI"
