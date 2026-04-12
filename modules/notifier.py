@@ -335,8 +335,6 @@ def _render_cash_section(cash_info: Dict) -> str:
 def format_email_report(report_data: Dict) -> str:
     """이메일 리포트 HTML 생성"""
     timestamp        = report_data['timestamp']
-    fx_rate          = report_data.get('fx_rate')
-    fx_zone_info     = report_data.get('fx_zone_info')
     isa_active_ticker = report_data.get('isa_active_ticker', '360750.KS')
     stock_data       = report_data.get('stock_data', [])
     isa_trigger      = report_data.get("isa_trigger")
@@ -372,27 +370,7 @@ def format_email_report(report_data: Dict) -> str:
             <p>{timestamp}</p>
         </div>
 
-        <!-- 환율 정보 -->
-        <div class="section">
-            <h2>💵 USD/KRW 환율</h2>
 """
-
-    if fx_rate and fx_zone_info:
-        html += f"""
-            <p><strong>현재 환율:</strong> {fx_rate:.2f}원</p>
-            <p><strong>구간:</strong> {fx_zone_info['zone_name']}</p>
-            <div class="alert">
-                <strong>액션:</strong> {fx_zone_info['action']}
-            </div>
-            <p style="font-size:13px; color:#555;">
-                <strong>ISA 활성 종목:</strong> {isa_active_ticker}
-                {'&nbsp;<span style="color:#28a745;">● 환헤지(449180)</span>' if isa_active_ticker == '449180.KS' else '&nbsp;<span style="color:#1a73e8;">● 환노출(360750)</span>'}
-            </p>
-"""
-    else:
-        html += "<p>환율 조회 실패</p>"
-
-    html += "</div>"
 
     # 중요 알림
     if isa_trigger or isa_2month_trigger or isa_sell_trigger or qcom_condition:
