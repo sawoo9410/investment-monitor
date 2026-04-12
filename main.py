@@ -35,7 +35,6 @@ def main():
 
     exchangerate_api_key = os.getenv('EXCHANGERATE_API_KEY')
     alphavantage_api_key = os.getenv('ALPHAVANTAGE_API_KEY')
-    # anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')  # 비활성화
     gmail_address = os.getenv('GMAIL_ADDRESS')
     gmail_app_password = os.getenv('GMAIL_APP_PASSWORD')
 
@@ -46,7 +45,7 @@ def main():
     api_limit_exceeded = False
 
     # 1. 환율 조회
-    print("\n[1/5] 환율 조회 중...")
+    print("\n[1/3] 환율 조회 중...")
     fx_rate = get_fx_rate(exchangerate_api_key)
     if fx_rate:
         print(f"✅ USD/KRW: {fx_rate:.2f}원")
@@ -62,7 +61,7 @@ def main():
     print(f"   ISA 활성 종목: {isa_active_ticker} (기준 {isa_switch_threshold}원)")
 
     # 2. 주식/ETF 데이터 수집
-    print("\n[2/5] 주식 데이터 수집 중...")
+    print("\n[2/3] 주식 데이터 수집 중...")
     stock_data = []
     isa_trigger_data = None      # ISA 매수 트리거 (전월 대비)
     isa_2month_trigger_data = None  # ISA 매수 트리거 (2달 전 대비, slowly melting 방지)
@@ -273,186 +272,17 @@ def main():
             print(f"    ✅ {ticker}: ${price_data['current_price']} ({price_data['change_pct']:+.2f}%)")
             time.sleep(2)
 
-    # 3. holdings_only 종목 가격 조회
-    print("\n[3/5] 기타 보유 종목 가격 조회 중...")
-    holdings_only_data = []
-
-    for holding_config in (config.get('holdings_only') or []):
-        ticker = holding_config['ticker']
-        print(f"  - {ticker} 조회 중...")
-
-        price_data = get_kr_etf_price(ticker)
-        if price_data:
-            holdings_only_data.append({
-                'ticker': ticker,
-                'name': holding_config.get('name', ticker),
-                'holdings': holding_config.get('holdings', 0),
-                'price': price_data['current_price']
-            })
-            print(f"    ✅ {ticker}: ₩{price_data['current_price']:,}")
-        else:
-            print(f"    ❌ {ticker} 가격 조회 실패")
-        time.sleep(1)
-
-    # 4. 현금 계산 (ISA / 토스 분리)
-    print("\n[4/5] 포트폴리오 비중 계산 중...")
-
-    portfolio_config = config.get('portfolio', {})
-    cash_config = portfolio_config.get('cash', {})
-
-    isa_krw      = cash_config.get('isa_krw', 0)
-    toss_krw     = cash_config.get('toss_krw', 0)
-    toss_usd     = cash_config.get('toss_usd', 0)
-    toss_usd_krw = round(toss_usd * fx_rate) if fx_rate and toss_usd else 0
-    total_cash   = isa_krw + toss_krw + toss_usd_krw
-
-    print(f"    💰 ISA 현금:   ₩{isa_krw:,.0f}")
-    print(f"    💰 토스 원화:  ₩{toss_krw:,.0f}")
-    print(f"    💰 토스 달러:  ${toss_usd:,.0f} (₩{toss_usd_krw:,.0f})")
-    print(f"    💰 현금 합계:  ₩{total_cash:,.0f}")
-
-    # 총 평가액 계산
-    total_value       = 0
-    sector_values     = {}
-    individual_values = {}
-
-    for stock_info in stock_data:
-        ticker   = stock_info.get('ticker', stock_info.get('price_data', {}).get('ticker', ''))
-        holdings = stock_info.get('holdings', 0)
-        price    = stock_info['price_data']['current_price']
-
-        if ticker.endswith('.KS') or ticker.endswith('.KRX'):
-            value_krw = holdings * price
-        else:
-            value_krw = holdings * price * (fx_rate or 1)
-
-        total_value += value_krw
-        individual_values[ticker] = {
-            'value': value_krw,
-            'holdings': holdings,
-            'price': price,
-            'name': stock_info.get('name', ticker),
-            'type': stock_info.get('type', '')
-        }
-
-        sector = stock_info.get('sector')
-        if sector:
-            sector_values[sector] = sector_values.get(sector, 0) + value_krw
-
-    for holding_data in holdings_only_data:
-        ticker    = holding_data['ticker']
-        value_krw = holding_data['holdings'] * holding_data['price']
-        total_value += value_krw
-        individual_values[ticker] = {
-            'value': value_krw,
-            'holdings': holding_data['holdings'],
-            'price': holding_data['price'],
-            'name': holding_data.get('name', ticker)
-        }
-
-    total_assets = total_value + total_cash
-
-    allocations = {
-        ticker: {**data, 'allocation_pct': (data['value'] / total_assets) * 100 if total_assets > 0 else 0}
-        for ticker, data in individual_values.items()
-    }
-
-    cash_allocation_pct = (total_cash / total_assets) * 100 if total_assets > 0 else 0
-    sector_allocations  = {
-        sector: (value / total_assets) * 100 if total_assets > 0 else 0
-        for sector, value in sector_values.items()
-    }
-
-    print(f"    ✅ 총 자산: ₩{total_assets:,.0f} (평가액 ₩{total_value:,.0f} + 현금 ₩{total_cash:,.0f})")
-    print(f"    📊 현금 비중: {cash_allocation_pct:.1f}%")
-
-    # 5. 포트폴리오 한도 체크
-    print("\n[5/5] 포트폴리오 한도 체크 중...")
-    limit_warnings = []
-    limits = portfolio_config.get('limits', {})
-
-    ai_tech_max = limits.get('ai_tech_sector_max', 0.30)
-    ai_tech_pct = sector_allocations.get('ai_tech', 0)
-    if ai_tech_pct > ai_tech_max * 100:
-        limit_warnings.append({'type': 'sector', 'message': f"AI·테크 섹터 {ai_tech_pct:.1f}% (한도 {ai_tech_max*100:.0f}% 초과)"})
-        print(f"    ⚠️  AI·테크 섹터 한도 초과: {ai_tech_pct:.1f}%")
-    else:
-        print(f"    ✅ AI·테크 섹터: {ai_tech_pct:.1f}% (한도 {ai_tech_max*100:.0f}% 이내)")
-
-    oxy_max = limits.get('oxy_max', 0.10)
-    oxy_pct = allocations.get('OXY', {}).get('allocation_pct', 0)
-    if oxy_pct > oxy_max * 100:
-        limit_warnings.append({'type': 'individual', 'message': f"OXY {oxy_pct:.1f}% (한도 {oxy_max*100:.0f}% 초과)"})
-        print(f"    ⚠️  OXY 한도 초과: {oxy_pct:.1f}%")
-    else:
-        print(f"    ✅ OXY: {oxy_pct:.1f}% (한도 {oxy_max*100:.0f}% 이내)")
-
-    # ── 개별 종목 비중 한도 체크 ──────────────────────────────────
-    individual_max = limits.get('individual_stock_max', 0.20)
-    for ticker, alloc_data in allocations.items():
-        pct = alloc_data.get('allocation_pct', 0)
-        if pct > individual_max * 100:
-            limit_warnings.append({'type': 'individual', 'message': f"{ticker} {pct:.1f}% (한도 {individual_max*100:.0f}% 초과)"})
-            print(f"    ⚠️  {ticker} 한도 초과: {pct:.1f}%")
-
-    # ── speculative 종목 비중 한도 체크 ──────────────────────────
-    speculative_max = limits.get('speculative_max', 0.05)
-    speculative_pct = sum(
-        alloc_data.get('allocation_pct', 0)
-        for alloc_data in allocations.values()
-        if alloc_data.get('type') == 'speculative'
-    )
-    if speculative_pct > speculative_max * 100:
-        limit_warnings.append({'type': 'speculative', 'message': f"베팅/speculative {speculative_pct:.1f}% (한도 {speculative_max*100:.0f}% 초과)"})
-        print(f"    ⚠️  베팅/speculative 한도 초과: {speculative_pct:.1f}%")
-    else:
-        print(f"    ✅ 베팅/speculative: {speculative_pct:.1f}% (한도 {speculative_max*100:.0f}% 이내)")
-
-    cash_min = limits.get('cash_min', 0.15)
-    cash_max = limits.get('cash_max', 0.25)
-    if cash_allocation_pct < cash_min * 100:
-        limit_warnings.append({'type': 'cash', 'message': f"현금 {cash_allocation_pct:.1f}% (최소 {cash_min*100:.0f}% 미달)"})
-        print(f"    ⚠️  현금 부족: {cash_allocation_pct:.1f}%")
-    elif cash_allocation_pct > cash_max * 100:
-        limit_warnings.append({'type': 'cash', 'message': f"현금 {cash_allocation_pct:.1f}% (최대 {cash_max*100:.0f}% 초과)"})
-        print(f"    ⚠️  현금 과다: {cash_allocation_pct:.1f}%")
-    else:
-        print(f"    ✅ 현금: {cash_allocation_pct:.1f}% (목표 범위 {cash_min*100:.0f}~{cash_max*100:.0f}% 이내)")
-
-    # ── AI 거시경제 요약 비활성화 (Perplexity 전환 예정) ──────────────
-    macro_summary = None
-    # ───────────────────────────────────────────────────────────────────
-
-    # 이메일 발송
-    print("\n이메일 리포트 발송 중...")
+    # 3. 이메일 발송
+    print("\n[3/3] 이메일 리포트 발송 중...")
 
     report_data = {
         'timestamp': datetime.now(pytz.timezone('Asia/Seoul')).strftime('%Y-%m-%d %H:%M:%S KST'),
-        'fx_rate': fx_rate,
-        'fx_zone_info': fx_zone_info,
         'isa_active_ticker': isa_active_ticker,
         'stock_data': stock_data,
         'isa_trigger': isa_trigger_data,
         'isa_2month_trigger': isa_2month_trigger_data,
         'isa_sell_trigger': isa_sell_trigger_data,
-        'cash_info': {
-            'isa_krw': isa_krw,
-            'toss_krw': toss_krw,
-            'toss_usd': toss_usd,
-            'toss_usd_krw': toss_usd_krw,
-            'total_cash': total_cash,
-            'cash_allocation_pct': cash_allocation_pct
-        },
-        'portfolio_summary': {
-            'total_assets': total_assets,
-            'total_value': total_value,
-            'total_cash': total_cash,
-            'allocations': allocations,
-            'sector_allocations': sector_allocations,
-            'cash_allocation_pct': cash_allocation_pct
-        },
-        'portfolio_warnings': limit_warnings,
-        'macro_summary': macro_summary
+        'spym_fx_rate': config.get('spym_fx_rate', 1420),
     }
 
     email_html = format_email_report(report_data)

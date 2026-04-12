@@ -41,7 +41,7 @@ def _trigger_badge(change_pct):
         return "<br><strong style='color:#ffc107;'>⚠️ -5% 트리거</strong>"
     return ""
 
-def _render_index_etf_table(stock_data, isa_active_ticker='360750.KS'):
+def _render_index_etf_table(stock_data, isa_active_ticker='360750.KS', spym_fx_rate=1420):
     """지수 ETF 테이블: 전일비 + 다기간 수익률 (전월 / 3M / 6M / 1Y)"""
     html = """
         <div class="section">
@@ -200,6 +200,56 @@ def _render_index_etf_table(stock_data, isa_active_ticker='360750.KS'):
         </div>
 """
 
+    # ── SPYM 매수 트리거 기준가 표시 (원화 환산) ────────────────────
+    trigger_spym = next(
+        (s for s in index_stocks if s.get('price_data', {}).get('ticker') == 'SPYM'),
+        None
+    )
+    if trigger_spym:
+        multi = trigger_spym.get('multi_period_data')
+        monthly = multi.get('periods', {}).get('monthly') if multi else None
+        if monthly:
+            baseline_usd = monthly['price']
+            baseline_date = monthly['date']
+            baseline_krw = baseline_usd * spym_fx_rate
+            price_5pct_krw = baseline_krw * 0.95
+            price_10pct_krw = baseline_krw * 0.90
+            current_usd = trigger_spym['price_data']['current_price']
+            current_krw = current_usd * spym_fx_rate
+
+            color_5 = '#dc3545' if current_krw <= price_5pct_krw else '#333'
+            color_10 = '#dc3545' if current_krw <= price_10pct_krw else '#333'
+
+            fmt = lambda p: f"₩{p:,.0f}"
+
+            html += f"""
+        <div style="margin-top:10px; padding:10px; background-color:#e8f4f8; border-radius:5px; font-size:13px;">
+            <strong>🎯 SPYM 매수 트리거 기준 (전월 대비, 원화 환산)</strong>
+            <span style="color:#888; margin-left:8px;">(전월 말일: ${baseline_usd:.2f} × ₩{spym_fx_rate:,} = {fmt(baseline_krw)} | {baseline_date})</span>
+            <table style="margin-top:8px; width:auto;">
+                <tr>
+                    <th style="padding:6px 16px 6px 6px;">구간</th>
+                    <th style="padding:6px 16px 6px 6px;">트리거 가격 (원화)</th>
+                    <th style="padding:6px 16px 6px 6px;">트리거 가격 (달러)</th>
+                    <th style="padding:6px 6px 6px 6px;">상태</th>
+                </tr>
+                <tr>
+                    <td style="padding:6px 16px 6px 6px; color:{color_5};"><strong>-5%</strong></td>
+                    <td style="padding:6px 16px 6px 6px; color:{color_5};">{fmt(price_5pct_krw)}</td>
+                    <td style="padding:6px 16px 6px 6px; color:{color_5};">${baseline_usd * 0.95:.2f}</td>
+                    <td style="padding:6px 6px 6px 6px;">{'🚨 트리거 발동' if current_krw <= price_5pct_krw else '✅ 미도달'}</td>
+                </tr>
+                <tr>
+                    <td style="padding:6px 16px 6px 6px; color:{color_10};"><strong>-10%</strong></td>
+                    <td style="padding:6px 16px 6px 6px; color:{color_10};">{fmt(price_10pct_krw)}</td>
+                    <td style="padding:6px 16px 6px 6px; color:{color_10};">${baseline_usd * 0.90:.2f}</td>
+                    <td style="padding:6px 6px 6px 6px;">{'🚨 트리거 발동' if current_krw <= price_10pct_krw else '✅ 미도달'}</td>
+                </tr>
+            </table>
+            <p style="color:#888; font-size:11px; margin-top:6px;">현재가: ${current_usd:.2f} (₩{spym_fx_rate:,} 기준 {fmt(current_krw)})</p>
+        </div>
+"""
+
     html += "</div>"
     return html
 
@@ -289,49 +339,6 @@ def _render_individual_stock_table(stock_data):
     html += "</table></div>"
     return html
 
-def _render_cash_section(cash_info: Dict) -> str:
-    """현금 섹션: ISA / 토스증권 분리 표시"""
-    isa_krw      = cash_info.get('isa_krw', 0)
-    toss_krw     = cash_info.get('toss_krw', 0)
-    toss_usd     = cash_info.get('toss_usd', 0)
-    toss_usd_krw = cash_info.get('toss_usd_krw', 0)
-    total_cash   = cash_info.get('total_cash', 0)
-    cash_pct     = cash_info.get('cash_allocation_pct', 0)
-
-    toss_total_krw = toss_krw + toss_usd_krw
-
-    html = f"""
-        <div class="section">
-            <h2>💰 현금 현황</h2>
-            <table>
-                <tr>
-                    <th>계좌</th>
-                    <th>원화</th>
-                    <th>달러</th>
-                    <th>합계 (원화)</th>
-                </tr>
-                <tr>
-                    <td>ISA 계좌</td>
-                    <td>₩{isa_krw:,.0f}</td>
-                    <td>-</td>
-                    <td>₩{isa_krw:,.0f}</td>
-                </tr>
-                <tr>
-                    <td>토스증권</td>
-                    <td>₩{toss_krw:,.0f}</td>
-                    <td>${toss_usd:,.0f} (₩{toss_usd_krw:,.0f})</td>
-                    <td>₩{toss_total_krw:,.0f}</td>
-                </tr>
-                <tr style="font-weight:bold; background-color:#f2f2f2;">
-                    <td>합계</td>
-                    <td colspan="2"></td>
-                    <td>₩{total_cash:,.0f} ({cash_pct:.1f}%)</td>
-                </tr>
-            </table>
-        </div>
-"""
-    return html
-
 def format_email_report(report_data: Dict) -> str:
     """이메일 리포트 HTML 생성"""
     timestamp        = report_data['timestamp']
@@ -340,10 +347,8 @@ def format_email_report(report_data: Dict) -> str:
     isa_trigger      = report_data.get("isa_trigger")
     isa_2month_trigger = report_data.get("isa_2month_trigger")
     isa_sell_trigger = report_data.get("isa_sell_trigger")
-    portfolio_summary  = report_data.get('portfolio_summary', {})
-    portfolio_warnings = report_data.get('portfolio_warnings', [])
+    spym_fx_rate     = report_data.get('spym_fx_rate', 1420)
     macro_summary    = report_data.get('macro_summary', '')
-    cash_info        = report_data.get('cash_info', {})
 
     html = f"""
     <html>
@@ -360,7 +365,6 @@ def format_email_report(report_data: Dict) -> str:
             th {{ background-color: #f2f2f2; font-weight: bold; }}
             .positive {{ color: #28a745; }}
             .negative {{ color: #dc3545; }}
-            .portfolio-item {{ margin: 8px 0; padding: 8px; background-color: #f9f9f9; border-radius: 3px; }}
         </style>
     </head>
     <body>
@@ -408,65 +412,8 @@ def format_email_report(report_data: Dict) -> str:
 
         html += "</div>"
 
-    # 포트폴리오 비중 요약
-    if portfolio_summary:
-        total_assets        = portfolio_summary.get('total_assets', 0)
-        total_value         = portfolio_summary.get('total_value', 0)
-        allocations         = portfolio_summary.get('allocations', {})
-        sector_allocations  = portfolio_summary.get('sector_allocations', {})
-        cash_allocation_pct = portfolio_summary.get('cash_allocation_pct', 0)
-        total_cash          = portfolio_summary.get('total_cash', 0)
-
-        html += f"""
-        <div class="section">
-            <h2>📊 포트폴리오 비중</h2>
-            <p><strong>총 자산:</strong> ₩{total_assets:,.0f}</p>
-            <p style="font-size: 14px; color: #666;">
-                ├─ 평가액: ₩{total_value:,.0f}<br>
-                └─ 현금 합계: ₩{total_cash:,.0f} ({cash_allocation_pct:.1f}%)
-            </p>
-
-            <h3 style="margin-top: 20px;">종목별 비중</h3>
-"""
-
-        for stock_info in stock_data:
-            ticker = stock_info['ticker'] if 'ticker' in stock_info else stock_info.get('price_data', {}).get('ticker', '')
-            if not ticker:
-                continue
-            if ticker in allocations:
-                alloc = allocations[ticker]
-                html += f"""
-            <div class="portfolio-item">
-                <strong>{ticker}</strong> ({alloc['name']})<br>
-                비중: {alloc['allocation_pct']:.1f}% |
-                평가액: ₩{alloc['value']:,.0f} |
-                보유: {alloc['holdings']}주
-            </div>
-"""
-
-        if sector_allocations:
-            html += "<h3 style='margin-top: 20px;'>섹터별 분석</h3>"
-            ai_tech_pct = sector_allocations.get('ai_tech', 0)
-            if ai_tech_pct > 0:
-                html += f"""
-            <div class="portfolio-item">
-                <strong>AI·테크 섹터:</strong> {ai_tech_pct:.1f}%
-            </div>
-"""
-
-        if portfolio_warnings:
-            html += "<h3 style='margin-top: 20px; color: #dc3545;'>⚠️ 포트폴리오 경고</h3>"
-            for warning in portfolio_warnings:
-                html += f"<div class='alert'>{warning['message']}</div>"
-
-        html += "</div>"
-
-    # 현금 현황 (ISA / 토스 분리)
-    if cash_info:
-        html += _render_cash_section(cash_info)
-
     # 지수 ETF 테이블 (트리거 기준가 포함)
-    html += _render_index_etf_table(stock_data, isa_active_ticker)
+    html += _render_index_etf_table(stock_data, isa_active_ticker, spym_fx_rate)
 
     # 개별주 테이블
     html += _render_individual_stock_table(stock_data)
