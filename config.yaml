@@ -35,14 +35,6 @@ watchlist:
     holdings: 70
     monthly_trigger: true
 
-  - ticker: "133690.KS"
-    name: "TIGER 미국나스닥100"
-    type: isa_core
-    holdings: 47
-    sell_trigger:
-      rise_50pct_sell: 5 # +5% 시 50% 매도
-      rise_all_sell: 10 # +10% 시 전량 매도
-
   # ── 개별주 ────────────────────────────────
   - ticker: GOOGL
     name: "Alphabet A"

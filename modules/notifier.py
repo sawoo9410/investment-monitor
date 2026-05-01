@@ -349,7 +349,6 @@ def format_email_report(report_data: Dict) -> str:
     stock_data       = report_data.get('stock_data', [])
     isa_trigger      = report_data.get("isa_trigger")
     isa_2month_trigger = report_data.get("isa_2month_trigger")
-    isa_sell_trigger = report_data.get("isa_sell_trigger")
     spym_fx_rate     = report_data.get('spym_fx_rate', 1420)
     macro_summary    = report_data.get('macro_summary', '')
 
@@ -379,7 +378,7 @@ def format_email_report(report_data: Dict) -> str:
 """
 
     # 중요 알림
-    if isa_trigger or isa_2month_trigger or isa_sell_trigger:
+    if isa_trigger or isa_2month_trigger:
         html += '<div class="section"><h2>🚨 중요 알림</h2>'
 
         if isa_trigger:
@@ -400,16 +399,6 @@ def format_email_report(report_data: Dict) -> str:
                 기준일: {isa_2month_trigger['baseline_date']} (₩{isa_2month_trigger['baseline_price']:,.0f})<br>
                 트리거 레벨: {isa_2month_trigger['trigger_level']}<br>
                 <strong>액션:</strong> {isa_2month_trigger['action']}
-            </div>
-"""
-
-        if isa_sell_trigger:
-            html += f"""
-            <div class="warning" style="border-left-color:#e67e22; background-color:#fef9f0;">
-                <strong>📈 ISA 매도 트리거 발동!</strong><br>
-                {isa_sell_trigger['ticker']}: 전월 대비 {isa_sell_trigger['change_pct']:.2f}%<br>
-                트리거 레벨: {isa_sell_trigger['trigger_level']}<br>
-                <strong>액션:</strong> {isa_sell_trigger['action']}
             </div>
 """
 

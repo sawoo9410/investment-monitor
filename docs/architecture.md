@@ -29,10 +29,9 @@ investment-monitor/
   └─ ISA 활성 종목 결정 (환율 >= 1380 → 449180, 미만 → 360750)
 
 [2/5] 주식 데이터 수집
-  ├─ 한국 ETF → FinanceDataReader (360750, 449180, 133690)
+  ├─ 한국 ETF → FinanceDataReader (360750, 449180)
   │   ├─ 지수 ETF: 다기간 수익률 (전월/3M/6M/1Y)
-  │   ├─ ISA 매수 트리거 판정 (-5%, -10%)
-  │   └─ ISA 매도 트리거 판정 (133690: +5%, +10%)
+  │   └─ ISA 매수 트리거 판정 (-5%, -10%)
   └─ 미국 주식 → Alpha Vantage (SPYM, GOOGL, OXY, QCOM, SOUN, NVDA)
       ├─ 지수 ETF(SPYM): 다기간 수익률
       ├─ 개별주: 전월 baseline + 펀더멘탈 (PER/ROE/D/E/Margin)

@@ -65,7 +65,6 @@ def main():
     stock_data = []
     isa_trigger_data = None      # ISA 매수 트리거 (전월 대비)
     isa_2month_trigger_data = None  # ISA 매수 트리거 (2달 전 대비, slowly melting 방지)
-    isa_sell_trigger_data = None # ISA 매도 트리거 (133690.KS)
 
     for stock_config in config['watchlist']:
         ticker = stock_config['ticker']
@@ -149,37 +148,6 @@ def main():
                                 'action': '현금 버퍼에서 50만원 추가 매수'
                             }
                             print(f"    ⚠️  ISA 2달 전 트리거 접근 중 ({change_2m:.2f}%)")
-
-                    # ── ISA 매도 트리거 (133690.KS) ──────────────────
-                    sell_trigger = stock_config.get('sell_trigger')
-                    if sell_trigger and monthly:
-                        change_pct = monthly['change_pct']
-                        rise_all  = sell_trigger.get('rise_all_sell', 10)
-                        rise_half = sell_trigger.get('rise_50pct_sell', 5)
-
-                        if change_pct >= rise_all:
-                            isa_sell_trigger_data = {
-                                'ticker': ticker,
-                                'change_pct': change_pct,
-                                'baseline_date': monthly['date'],
-                                'baseline_price': monthly['price'],
-                                'current_price': multi_data['current_price'],
-                                'trigger_level': f'+{rise_all}% 이상 상승',
-                                'action': f'전량 매도 ({stock_config.get("holdings", 0)}주)'
-                            }
-                            print(f"    🚨 ISA 매도 트리거 발동! 전량 ({change_pct:.2f}%)")
-                        elif change_pct >= rise_half:
-                            holdings = stock_config.get('holdings', 0)
-                            isa_sell_trigger_data = {
-                                'ticker': ticker,
-                                'change_pct': change_pct,
-                                'baseline_date': monthly['date'],
-                                'baseline_price': monthly['price'],
-                                'current_price': multi_data['current_price'],
-                                'trigger_level': f'+{rise_half}% 이상 상승',
-                                'action': f'50% 매도 ({holdings // 2}주)'
-                            }
-                            print(f"    ⚠️  ISA 매도 트리거 접근 중 50% ({change_pct:.2f}%)")
 
                     # 기간별 수익률 로그
                     m  = periods.get('monthly')
@@ -281,7 +249,6 @@ def main():
         'stock_data': stock_data,
         'isa_trigger': isa_trigger_data,
         'isa_2month_trigger': isa_2month_trigger_data,
-        'isa_sell_trigger': isa_sell_trigger_data,
         'spym_fx_rate': config.get('spym_fx_rate', 1420),
     }
 
