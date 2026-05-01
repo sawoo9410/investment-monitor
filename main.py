@@ -63,8 +63,8 @@ def main():
     # 2. 주식/ETF 데이터 수집
     print("\n[2/3] 주식 데이터 수집 중...")
     stock_data = []
-    isa_trigger_data = None      # ISA 매수 트리거 (전월 대비)
-    isa_2month_trigger_data = None  # ISA 매수 트리거 (2달 전 대비, slowly melting 방지)
+    isa_trigger_list = []      # 지수 ETF 매수 트리거 (전월 대비)
+    isa_2month_trigger_list = []  # 지수 ETF 매수 트리거 (2달 전 대비, slowly melting 방지)
 
     for stock_config in config['watchlist']:
         ticker = stock_config['ticker']
@@ -96,58 +96,60 @@ def main():
                     periods = multi_data.get('periods', {})
                     monthly = periods.get('monthly')
 
-                    # ── ISA 매수 트리거 (449180 전용) ──────────
-                    if stock_config.get('monthly_trigger') and monthly and ticker == '449180.KS':
+                    # ── 지수 ETF 매수 트리거 (전월 대비) ──────────
+                    if stock_config.get('monthly_trigger') and monthly:
                         change_pct = monthly['change_pct']
+                        action_m = '현금 버퍼에서 100만원 추가 매수' if ticker == '449180.KS' else '매수 트리거 발동'
                         if change_pct <= -10:
-                            isa_trigger_data = {
+                            isa_trigger_list.append({
                                 'ticker': ticker,
                                 'change_pct': change_pct,
                                 'baseline_date': monthly['date'],
                                 'baseline_price': monthly['price'],
                                 'current_price': multi_data['current_price'],
                                 'trigger_level': '-10% 이상 하락',
-                                'action': '현금 버퍼에서 100만원 추가 매수'
-                            }
-                            print(f"    🚨 ISA 매수 트리거 발동! ({change_pct:.2f}%)")
+                                'action': action_m
+                            })
+                            print(f"    🚨 매수 트리거 발동! ({change_pct:.2f}%)")
                         elif change_pct <= -5:
-                            isa_trigger_data = {
+                            isa_trigger_list.append({
                                 'ticker': ticker,
                                 'change_pct': change_pct,
                                 'baseline_date': monthly['date'],
                                 'baseline_price': monthly['price'],
                                 'current_price': multi_data['current_price'],
                                 'trigger_level': '-5% 이상 하락',
-                                'action': '현금 버퍼에서 100만원 추가 매수'
-                            }
-                            print(f"    ⚠️  ISA 매수 트리거 접근 중 ({change_pct:.2f}%)")
+                                'action': action_m
+                            })
+                            print(f"    ⚠️  매수 트리거 접근 중 ({change_pct:.2f}%)")
 
-                    # ── ISA 2달 전 매수 트리거 (449180 전용, slowly melting 방지) ──
+                    # ── 지수 ETF 매수 트리거 (2달 전 대비, slowly melting 방지) ──
                     two_month = periods.get('2month')
-                    if ticker == '449180.KS' and two_month:
+                    if stock_config.get('monthly_trigger') and two_month:
                         change_2m = two_month['change_pct']
+                        action_2m = '현금 버퍼에서 50만원 추가 매수' if ticker == '449180.KS' else '매수 트리거 발동'
                         if change_2m <= -10:
-                            isa_2month_trigger_data = {
+                            isa_2month_trigger_list.append({
                                 'ticker': ticker,
                                 'change_pct': change_2m,
                                 'baseline_date': two_month['date'],
                                 'baseline_price': two_month['price'],
                                 'current_price': multi_data['current_price'],
                                 'trigger_level': '2달 전 대비 -10% 이상 하락',
-                                'action': '현금 버퍼에서 50만원 추가 매수'
-                            }
-                            print(f"    🚨 ISA 2달 전 트리거 발동! ({change_2m:.2f}%)")
+                                'action': action_2m
+                            })
+                            print(f"    🚨 2달 전 트리거 발동! ({change_2m:.2f}%)")
                         elif change_2m <= -5:
-                            isa_2month_trigger_data = {
+                            isa_2month_trigger_list.append({
                                 'ticker': ticker,
                                 'change_pct': change_2m,
                                 'baseline_date': two_month['date'],
                                 'baseline_price': two_month['price'],
                                 'current_price': multi_data['current_price'],
                                 'trigger_level': '2달 전 대비 -5% 이상 하락',
-                                'action': '현금 버퍼에서 50만원 추가 매수'
-                            }
-                            print(f"    ⚠️  ISA 2달 전 트리거 접근 중 ({change_2m:.2f}%)")
+                                'action': action_2m
+                            })
+                            print(f"    ⚠️  2달 전 트리거 접근 중 ({change_2m:.2f}%)")
 
                     # 기간별 수익률 로그
                     m  = periods.get('monthly')
@@ -247,8 +249,8 @@ def main():
         'timestamp': datetime.now(pytz.timezone('Asia/Seoul')).strftime('%Y-%m-%d %H:%M:%S KST'),
         'isa_active_ticker': isa_active_ticker,
         'stock_data': stock_data,
-        'isa_trigger': isa_trigger_data,
-        'isa_2month_trigger': isa_2month_trigger_data,
+        'isa_triggers': isa_trigger_list,
+        'isa_2month_triggers': isa_2month_trigger_list,
         'spym_fx_rate': config.get('spym_fx_rate', 1420),
     }
 

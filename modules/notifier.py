@@ -347,8 +347,8 @@ def format_email_report(report_data: Dict) -> str:
     timestamp        = report_data['timestamp']
     isa_active_ticker = report_data.get('isa_active_ticker', '360750.KS')
     stock_data       = report_data.get('stock_data', [])
-    isa_trigger      = report_data.get("isa_trigger")
-    isa_2month_trigger = report_data.get("isa_2month_trigger")
+    isa_triggers     = report_data.get("isa_triggers", [])
+    isa_2month_triggers = report_data.get("isa_2month_triggers", [])
     spym_fx_rate     = report_data.get('spym_fx_rate', 1420)
     macro_summary    = report_data.get('macro_summary', '')
 
@@ -378,27 +378,27 @@ def format_email_report(report_data: Dict) -> str:
 """
 
     # 중요 알림
-    if isa_trigger or isa_2month_trigger:
+    if isa_triggers or isa_2month_triggers:
         html += '<div class="section"><h2>🚨 중요 알림</h2>'
 
-        if isa_trigger:
+        for t in isa_triggers:
             html += f"""
             <div class="warning">
-                <strong>📉 ISA 매수 트리거 발동! (전월 대비)</strong><br>
-                {isa_trigger['ticker']}: 전월 대비 {isa_trigger['change_pct']:.2f}%<br>
-                트리거 레벨: {isa_trigger['trigger_level']}<br>
-                <strong>액션:</strong> {isa_trigger['action']}
+                <strong>📉 매수 트리거 발동! (전월 대비)</strong><br>
+                {t['ticker']}: 전월 대비 {t['change_pct']:.2f}%<br>
+                트리거 레벨: {t['trigger_level']}<br>
+                <strong>액션:</strong> {t['action']}
             </div>
 """
 
-        if isa_2month_trigger:
+        for t in isa_2month_triggers:
             html += f"""
             <div class="warning" style="border-left-color:#6f42c1; background-color:#f3f0ff;">
-                <strong>📉 ISA 매수 트리거 발동! (2달 전 대비, slowly melting 방지)</strong><br>
-                {isa_2month_trigger['ticker']}: 2달 전 대비 {isa_2month_trigger['change_pct']:.2f}%<br>
-                기준일: {isa_2month_trigger['baseline_date']} (₩{isa_2month_trigger['baseline_price']:,.0f})<br>
-                트리거 레벨: {isa_2month_trigger['trigger_level']}<br>
-                <strong>액션:</strong> {isa_2month_trigger['action']}
+                <strong>📉 매수 트리거 발동! (2달 전 대비, slowly melting 방지)</strong><br>
+                {t['ticker']}: 2달 전 대비 {t['change_pct']:.2f}%<br>
+                기준일: {t['baseline_date']} (₩{t['baseline_price']:,.0f})<br>
+                트리거 레벨: {t['trigger_level']}<br>
+                <strong>액션:</strong> {t['action']}
             </div>
 """
 
