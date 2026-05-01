@@ -85,7 +85,8 @@ def main():
                 'type': stock_type,
                 'name': stock_config.get('name', ticker),
                 'holdings': stock_config.get('holdings', 0),
-                'price_data': price_data
+                'price_data': price_data,
+                'monthly_trigger': stock_config.get('monthly_trigger', False),
             }
 
             if is_index:
