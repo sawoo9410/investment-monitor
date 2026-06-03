@@ -1,9 +1,10 @@
 name: Daily Investment Report
 
 on:
-  schedule:
-    # 평일(월-금) 오전 7시 KST (UTC 22:00)
-    - cron: "0 22 * * 0-4"
+  # 자동 스케줄 비활성화 (필요 시 아래 cron 주석 해제)
+  # schedule:
+  #   # 평일(월-금) 오전 7시 KST (UTC 22:00)
+  #   - cron: "0 22 * * 0-4"
   workflow_dispatch: # 수동 실행 가능
 
 jobs:
